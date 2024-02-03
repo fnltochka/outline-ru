@@ -62,6 +62,10 @@ export const languageOptions = [
     value: "fa_IR",
   },
   {
+    label: "Pусский (Russian)",
+    value: "ru_RU",
+  },
+  {
     label: "Türkçe (Turkish)",
     value: "tr_TR",
   },
