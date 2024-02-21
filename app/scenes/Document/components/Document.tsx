@@ -202,13 +202,26 @@ class DocumentScene extends React.Component<Props> {
     }
   };
 
+  onUndoRedo = (event: KeyboardEvent) => {
+    if (isModKey(event)) {
+      if (event.shiftKey) {
+        if (this.editor.current?.redo()) {
+          event.preventDefault();
+        }
+      } else {
+        if (this.editor.current?.undo()) {
+          event.preventDefault();
+        }
+      }
+    }
+  };
+
   onMove = (ev: React.MouseEvent | KeyboardEvent) => {
     ev.preventDefault();
     const { document, dialogs, t, abilities } = this.props;
     if (abilities.move) {
       dialogs.openModal({
         title: t("Move document"),
-        isCentered: true,
         content: <DocumentMove document={document} />,
       });
     }
@@ -258,7 +271,6 @@ class DocumentScene extends React.Component<Props> {
     } else {
       dialogs.openModal({
         title: t("Publish document"),
-        isCentered: true,
         content: <DocumentPublish document={document} />,
       });
     }
@@ -408,6 +420,7 @@ class DocumentScene extends React.Component<Props> {
           />
         )}
         <RegisterKeyDown trigger="m" handler={this.onMove} />
+        <RegisterKeyDown trigger="z" handler={this.onUndoRedo} />
         <RegisterKeyDown trigger="e" handler={this.goToEdit} />
         <RegisterKeyDown trigger="Escape" handler={this.goBack} />
         <RegisterKeyDown trigger="h" handler={this.goToHistory} />

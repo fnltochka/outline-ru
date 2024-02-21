@@ -224,7 +224,6 @@ export const publishDocument = createAction({
     } else if (document) {
       stores.dialogs.openModal({
         title: t("Publish document"),
-        isCentered: true,
         content: <DocumentPublish document={document} />,
       });
     }
@@ -252,17 +251,13 @@ export const unpublishDocument = createAction({
       return;
     }
 
-    try {
-      await document.unpublish();
+    await document.unpublish();
 
-      toast.success(
-        t("Unpublished {{ documentName }}", {
-          documentName: document.noun,
-        })
-      );
-    } catch (err) {
-      toast.error(err.message);
-    }
+    toast.success(
+      t("Unpublished {{ documentName }}", {
+        documentName: document.noun,
+      })
+    );
   },
 });
 
@@ -289,9 +284,7 @@ export const subscribeDocument = createAction({
     }
 
     const document = stores.documents.get(activeDocumentId);
-
     await document?.subscribe();
-
     toast.success(t("Subscribed to document notifications"));
   },
 });
@@ -345,7 +338,6 @@ export const shareDocument = createAction({
 
     stores.dialogs.openModal({
       title: t("Share this document"),
-      isCentered: true,
       content: (
         <SharePopover
           document={document}
@@ -495,7 +487,6 @@ export const duplicateDocument = createAction({
 
     stores.dialogs.openModal({
       title: t("Copy document"),
-      isCentered: true,
       content: (
         <DuplicateDialog
           document={document}
@@ -543,17 +534,13 @@ export const pinDocumentToCollection = createAction({
       return;
     }
 
-    try {
-      const document = stores.documents.get(activeDocumentId);
-      await document?.pin(document.collectionId);
+    const document = stores.documents.get(activeDocumentId);
+    await document?.pin(document.collectionId);
 
-      const collection = stores.collections.get(activeCollectionId);
+    const collection = stores.collections.get(activeCollectionId);
 
-      if (!collection || !location.pathname.startsWith(collection?.url)) {
-        toast.success(t("Pinned to collection"));
-      }
-    } catch (err) {
-      toast.error(err.message);
+    if (!collection || !location.pathname.startsWith(collection?.url)) {
+      toast.success(t("Pinned to collection"));
     }
   },
 });
@@ -586,14 +573,10 @@ export const pinDocumentToHome = createAction({
     }
     const document = stores.documents.get(activeDocumentId);
 
-    try {
-      await document?.pin();
+    await document?.pin();
 
-      if (location.pathname !== homePath()) {
-        toast.success(t("Pinned to home"));
-      }
-    } catch (err) {
-      toast.error(err.message);
+    if (location.pathname !== homePath()) {
+      toast.success(t("Pinned to home"));
     }
   },
 });
@@ -644,21 +627,16 @@ export const importDocument = createAction({
     input.onchange = async (ev) => {
       const files = getEventFiles(ev);
 
-      try {
-        const file = files[0];
-        const document = await documents.import(
-          file,
-          activeDocumentId,
-          activeCollectionId,
-          {
-            publish: true,
-          }
-        );
-        history.push(document.url);
-      } catch (err) {
-        toast.error(err.message);
-        throw err;
-      }
+      const file = files[0];
+      const document = await documents.import(
+        file,
+        activeDocumentId,
+        activeCollectionId,
+        {
+          publish: true,
+        }
+      );
+      history.push(document.url);
     };
 
     input.click();
@@ -692,7 +670,6 @@ export const createTemplate = createAction({
 
     stores.dialogs.openModal({
       title: t("Create template"),
-      isCentered: true,
       content: <DocumentTemplatizeDialog documentId={activeDocumentId} />,
     });
   },
@@ -751,7 +728,6 @@ export const moveDocument = createAction({
         title: t("Move {{ documentType }}", {
           documentType: document.noun,
         }),
-        isCentered: true,
         content: <DocumentMove document={document} />,
       });
     }
@@ -805,7 +781,6 @@ export const deleteDocument = createAction({
         title: t("Delete {{ documentName }}", {
           documentName: document.noun,
         }),
-        isCentered: true,
         content: (
           <DocumentDelete
             document={document}
@@ -840,7 +815,6 @@ export const permanentlyDeleteDocument = createAction({
         title: t("Permanently delete {{ documentName }}", {
           documentName: document.noun,
         }),
-        isCentered: true,
         content: (
           <DocumentPermanentDelete
             document={document}
