@@ -3,8 +3,9 @@ import * as React from "react";
 import { Portal } from "react-portal";
 import styled from "styled-components";
 import { depths } from "@shared/styles";
-import { UnfurlType } from "@shared/types";
+import { UnfurlResourceType } from "@shared/types";
 import LoadingIndicator from "~/components/LoadingIndicator";
+import env from "~/env";
 import useEventListener from "~/hooks/useEventListener";
 import useKeyDown from "~/hooks/useKeyDown";
 import useMobile from "~/hooks/useMobile";
@@ -15,8 +16,10 @@ import useStores from "~/hooks/useStores";
 import { client } from "~/utils/ApiClient";
 import { CARD_MARGIN } from "./Components";
 import HoverPreviewDocument from "./HoverPreviewDocument";
+import HoverPreviewIssue from "./HoverPreviewIssue";
 import HoverPreviewLink from "./HoverPreviewLink";
 import HoverPreviewMention from "./HoverPreviewMention";
+import HoverPreviewPullRequest from "./HoverPreviewPullRequest";
 
 const DELAY_CLOSE = 600;
 const POINTER_HEIGHT = 22;
@@ -111,22 +114,47 @@ function HoverPreviewDesktop({ element, onClose }: Props) {
           {(data) => (
             <Animate
               initial={{ opacity: 0, y: -20, pointerEvents: "none" }}
-              animate={{ opacity: 1, y: 0, pointerEvents: "auto" }}
+              animate={{
+                opacity: 1,
+                y: 0,
+                transitionEnd: { pointerEvents: "auto" },
+              }}
             >
-              {data.type === UnfurlType.Mention ? (
+              {data.type === UnfurlResourceType.Mention ? (
                 <HoverPreviewMention
-                  url={data.thumbnailUrl}
-                  title={data.title}
-                  info={data.meta.info}
-                  color={data.meta.color}
+                  name={data.name}
+                  avatarUrl={data.avatarUrl}
+                  color={data.color}
+                  lastActive={data.lastActive}
                 />
-              ) : data.type === UnfurlType.Document ? (
+              ) : data.type === UnfurlResourceType.Document ? (
                 <HoverPreviewDocument
-                  id={data.meta.id}
                   url={data.url}
+                  id={data.id}
+                  title={data.title}
+                  summary={data.summary}
+                  lastActivityByViewer={data.lastActivityByViewer}
+                />
+              ) : data.type === UnfurlResourceType.Issue ? (
+                <HoverPreviewIssue
+                  url={data.url}
+                  id={data.id}
                   title={data.title}
                   description={data.description}
-                  info={data.meta.info}
+                  author={data.author}
+                  labels={data.labels}
+                  state={data.state}
+                  createdAt={data.createdAt}
+                />
+              ) : data.type === UnfurlResourceType.PR ? (
+                <HoverPreviewPullRequest
+                  url={data.url}
+                  id={data.id}
+                  title={data.title}
+                  description={data.description}
+                  author={data.author}
+                  createdAt={data.createdAt}
+                  state={data.state}
                 />
               ) : (
                 <HoverPreviewLink
@@ -161,7 +189,7 @@ function DataLoader({
     React.useCallback(
       () =>
         client.post("/urls.unfurl", {
-          url,
+          url: url.startsWith("/") ? env.URL + url : url,
           documentId: ui.activeDocumentId,
         }),
       [url, ui.activeDocumentId]

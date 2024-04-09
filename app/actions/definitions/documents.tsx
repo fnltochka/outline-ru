@@ -26,6 +26,7 @@ import {
   CommentIcon,
   GlobeIcon,
   CopyIcon,
+  EyeIcon,
 } from "outline-icons";
 import * as React from "react";
 import { toast } from "sonner";
@@ -431,7 +432,8 @@ export const copyDocumentAsMarkdown = createAction({
   name: ({ t }) => t("Copy as Markdown"),
   section: DocumentSection,
   keywords: "clipboard",
-  visible: ({ activeDocumentId }) => !!activeDocumentId,
+  visible: ({ activeDocumentId, stores }) =>
+    !!activeDocumentId && stores.policies.abilities(activeDocumentId).download,
   perform: ({ stores, activeDocumentId, t }) => {
     const document = activeDocumentId
       ? stores.documents.get(activeDocumentId)
@@ -855,7 +857,7 @@ export const openDocumentHistory = createAction({
   icon: <HistoryIcon />,
   visible: ({ activeDocumentId, stores }) => {
     const can = stores.policies.abilities(activeDocumentId ?? "");
-    return !!activeDocumentId && can.read && !can.restore;
+    return !!activeDocumentId && can.listRevisions;
   },
   perform: ({ activeDocumentId, stores }) => {
     if (!activeDocumentId) {
@@ -882,7 +884,7 @@ export const openDocumentInsights = createAction({
 
     return (
       !!activeDocumentId &&
-      can.read &&
+      can.listViews &&
       !document?.isTemplate &&
       !document?.isDeleted
     );
@@ -896,6 +898,37 @@ export const openDocumentInsights = createAction({
       return;
     }
     history.push(documentInsightsPath(document));
+  },
+});
+
+export const toggleViewerInsights = createAction({
+  name: ({ t, stores, activeDocumentId }) => {
+    const document = activeDocumentId
+      ? stores.documents.get(activeDocumentId)
+      : undefined;
+    return document?.insightsEnabled
+      ? t("Disable viewer insights")
+      : t("Enable viewer insights");
+  },
+  analyticsName: "Toggle viewer insights",
+  section: DocumentSection,
+  icon: <EyeIcon />,
+  visible: ({ activeDocumentId, stores }) => {
+    const can = stores.policies.abilities(activeDocumentId ?? "");
+    return can.updateInsights;
+  },
+  perform: async ({ activeDocumentId, stores }) => {
+    if (!activeDocumentId) {
+      return;
+    }
+    const document = stores.documents.get(activeDocumentId);
+    if (!document) {
+      return;
+    }
+
+    await document.save({
+      insightsEnabled: !document.insightsEnabled,
+    });
   },
 });
 

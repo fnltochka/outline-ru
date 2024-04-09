@@ -390,7 +390,7 @@ export class Editor extends React.PureComponent<
   private createPasteParser() {
     return this.extensions.parser({
       schema: this.schema,
-      rules: { linkify: true, emoji: false },
+      rules: { linkify: true },
       plugins: this.rulePlugins,
     });
   }
@@ -457,11 +457,14 @@ export class Editor extends React.PureComponent<
       state: this.createState(this.props.value),
       editable: () => !this.props.readOnly,
       nodeViews: this.nodeViews,
-      dispatchTransaction(transaction) {
+      dispatchTransaction(this: EditorView, transaction) {
+        if (this.isDestroyed) {
+          return;
+        }
+
         // callback is bound to have the view instance as its this binding
-        const { state, transactions } = (
-          this.state as EditorState
-        ).applyTransaction(transaction);
+        const { state, transactions } =
+          this.state.applyTransaction(transaction);
 
         this.updateState(state);
 

@@ -11,8 +11,9 @@ import {
   Event,
 } from "@server/types";
 import fetch from "@server/utils/fetch";
+import { sleep } from "@server/utils/timers";
 import env from "../env";
-import presentMessageAttachment from "../presenters/messageAttachment";
+import { presentMessageAttachment } from "../presenters/messageAttachment";
 
 export default class SlackProcessor extends BaseProcessor {
   static applicableEvents: Event["name"][] = [
@@ -25,6 +26,8 @@ export default class SlackProcessor extends BaseProcessor {
     switch (event.name) {
       case "documents.publish":
       case "revisions.create":
+        // wait a few seconds to give the document summary chance to be generated
+        await sleep(5000);
         return this.documentUpdated(event);
 
       case "integrations.create":
