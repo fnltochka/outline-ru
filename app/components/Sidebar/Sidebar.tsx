@@ -4,18 +4,20 @@ import { useLocation } from "react-router-dom";
 import styled, { css, useTheme } from "styled-components";
 import breakpoint from "styled-components-breakpoint";
 import { depths, s } from "@shared/styles";
+import { Avatar } from "~/components/Avatar";
 import Flex from "~/components/Flex";
 import useCurrentUser from "~/hooks/useCurrentUser";
 import useMenuContext from "~/hooks/useMenuContext";
+import useMobile from "~/hooks/useMobile";
 import usePrevious from "~/hooks/usePrevious";
 import useStores from "~/hooks/useStores";
 import AccountMenu from "~/menus/AccountMenu";
 import { fadeOnDesktopBackgrounded } from "~/styles";
 import { fadeIn } from "~/styles/animations";
 import Desktop from "~/utils/Desktop";
-import Avatar from "../Avatar";
 import NotificationIcon from "../Notifications/NotificationIcon";
 import NotificationsPopover from "../Notifications/NotificationsPopover";
+import { TooltipProvider } from "../TooltipContext";
 import ResizeBorder from "./components/ResizeBorder";
 import SidebarButton, { SidebarButtonProps } from "./components/SidebarButton";
 import ToggleButton from "./components/ToggleButton";
@@ -24,11 +26,12 @@ const ANIMATION_MS = 250;
 
 type Props = {
   children: React.ReactNode;
+  hidden?: boolean;
   className?: string;
 };
 
 const Sidebar = React.forwardRef<HTMLDivElement, Props>(function _Sidebar(
-  { children, className }: Props,
+  { children, hidden = false, className }: Props,
   ref: React.RefObject<HTMLDivElement>
 ) {
   const [isCollapsing, setCollapsing] = React.useState(false);
@@ -38,12 +41,12 @@ const Sidebar = React.forwardRef<HTMLDivElement, Props>(function _Sidebar(
   const previousLocation = usePrevious(location);
   const { isMenuOpen } = useMenuContext();
   const user = useCurrentUser({ rejectOnEmpty: false });
+  const isMobile = useMobile();
   const width = ui.sidebarWidth;
   const collapsed = ui.sidebarIsClosed && !isMenuOpen;
   const maxWidth = theme.sidebarMaxWidth;
   const minWidth = theme.sidebarMinWidth + 16; // padding
 
-  const setWidth = ui.setSidebarWidth;
   const [offset, setOffset] = React.useState(0);
   const [isHovering, setHovering] = React.useState(false);
   const [isAnimating, setAnimating] = React.useState(false);
@@ -59,13 +62,13 @@ const Sidebar = React.forwardRef<HTMLDivElement, Props>(function _Sidebar(
       const width = Math.min(event.pageX - offset, maxWidth);
       const isSmallerThanCollapsePoint = width < minWidth / 2;
 
-      if (isSmallerThanCollapsePoint) {
-        setWidth(theme.sidebarCollapsedWidth);
-      } else {
-        setWidth(width);
-      }
+      ui.set({
+        sidebarWidth: isSmallerThanCollapsePoint
+          ? theme.sidebarCollapsedWidth
+          : width,
+      });
     },
-    [theme, offset, minWidth, maxWidth, setWidth]
+    [ui, theme, offset, minWidth, maxWidth]
   );
 
   const handleStopDrag = React.useCallback(() => {
@@ -83,16 +86,25 @@ const Sidebar = React.forwardRef<HTMLDivElement, Props>(function _Sidebar(
         setCollapsing(true);
         ui.collapseSidebar();
       } else {
-        setWidth(minWidth);
+        ui.set({ sidebarWidth: minWidth });
         setAnimating(true);
       }
     } else {
-      setWidth(width);
+      ui.set({ sidebarWidth: width });
     }
-  }, [ui, isSmallerThanMinimum, minWidth, width, setWidth]);
+  }, [ui, isSmallerThanMinimum, minWidth, width]);
+
+  const handleBlur = React.useCallback(() => {
+    setHovering(false);
+  }, []);
 
   const handleMouseDown = React.useCallback(
     (event) => {
+      event.preventDefault();
+      if (!document.hasFocus()) {
+        return;
+      }
+
       setOffset(event.pageX - width);
       setResizing(true);
       setAnimating(false);
@@ -100,9 +112,9 @@ const Sidebar = React.forwardRef<HTMLDivElement, Props>(function _Sidebar(
     [width]
   );
 
-  const handlePointerMove = React.useCallback(() => {
+  const handlePointerActivity = React.useCallback(() => {
     if (ui.sidebarIsClosed) {
-      setHovering(true);
+      setHovering(document.hasFocus());
       setPointerMoved(true);
     }
   }, [ui.sidebarIsClosed]);
@@ -111,8 +123,8 @@ const Sidebar = React.forwardRef<HTMLDivElement, Props>(function _Sidebar(
     (ev) => {
       if (hasPointerMoved) {
         setHovering(
-          ev.pageX < width &&
-            ev.pageX > 0 &&
+          document.hasFocus() &&
+            ev.pageX < width &&
             ev.pageY < window.innerHeight &&
             ev.pageY > 0
         );
@@ -137,26 +149,32 @@ const Sidebar = React.forwardRef<HTMLDivElement, Props>(function _Sidebar(
   React.useEffect(() => {
     if (isCollapsing) {
       setTimeout(() => {
-        setWidth(minWidth);
+        ui.set({ sidebarWidth: minWidth });
         setCollapsing(false);
       }, ANIMATION_MS);
     }
-  }, [setWidth, minWidth, isCollapsing]);
+  }, [ui, minWidth, isCollapsing]);
 
   React.useEffect(() => {
     if (isResizing) {
+      document.body.style.cursor = "col-resize";
       document.addEventListener("mousemove", handleDrag);
       document.addEventListener("mouseup", handleStopDrag);
+    } else {
+      document.body.style.cursor = "initial";
     }
 
+    window.addEventListener("blur", handleBlur);
+
     return () => {
+      window.removeEventListener("blur", handleBlur);
       document.removeEventListener("mousemove", handleDrag);
       document.removeEventListener("mouseup", handleStopDrag);
     };
-  }, [isResizing, handleDrag, handleStopDrag]);
+  }, [isResizing, handleDrag, handleBlur, handleStopDrag]);
 
   const handleReset = React.useCallback(() => {
-    ui.setSidebarWidth(theme.sidebarWidth);
+    ui.set({ sidebarWidth: theme.sidebarWidth });
   }, [ui, theme.sidebarWidth]);
 
   React.useEffect(() => {
@@ -177,17 +195,21 @@ const Sidebar = React.forwardRef<HTMLDivElement, Props>(function _Sidebar(
   );
 
   return (
-    <>
+    <TooltipProvider>
       <Container
+        id="sidebar"
         ref={ref}
         style={style}
+        $hidden={hidden}
         $isHovering={isHovering}
         $isAnimating={isAnimating}
         $isSmallerThanMinimum={isSmallerThanMinimum}
         $mobileSidebarVisible={ui.mobileSidebarVisible}
         $collapsed={collapsed}
+        $isMobile={isMobile}
         className={className}
-        onPointerMove={handlePointerMove}
+        onPointerDown={handlePointerActivity}
+        onPointerMove={handlePointerActivity}
         onPointerLeave={handlePointerLeave}
         column
       >
@@ -211,15 +233,7 @@ const Sidebar = React.forwardRef<HTMLDivElement, Props>(function _Sidebar(
                   />
                 }
               >
-                <NotificationsPopover>
-                  {(rest: SidebarButtonProps) => (
-                    <SidebarButton
-                      {...rest}
-                      position="bottom"
-                      image={<NotificationIcon />}
-                    />
-                  )}
-                </NotificationsPopover>
+                <Notifications />
               </SidebarButton>
             )}
           </AccountMenu>
@@ -230,9 +244,17 @@ const Sidebar = React.forwardRef<HTMLDivElement, Props>(function _Sidebar(
         />
       </Container>
       {ui.mobileSidebarVisible && <Backdrop onClick={ui.toggleMobileSidebar} />}
-    </>
+    </TooltipProvider>
   );
 });
+
+const Notifications = () => (
+  <NotificationsPopover>
+    {(rest: SidebarButtonProps) => (
+      <SidebarButton {...rest} position="bottom" image={<NotificationIcon />} />
+    )}
+  </NotificationsPopover>
+);
 
 const Backdrop = styled.a`
   animation: ${fadeIn} 250ms ease-in-out;
@@ -252,6 +274,8 @@ type ContainerProps = {
   $isSmallerThanMinimum: boolean;
   $isHovering: boolean;
   $collapsed: boolean;
+  $hidden: boolean;
+  $isMobile: boolean;
 };
 
 const hoverStyles = (props: ContainerProps) => `
@@ -275,11 +299,9 @@ const Container = styled(Flex)<ContainerProps>`
   bottom: 0;
   width: 100%;
   background: ${s("sidebarBackground")};
-  transition: box-shadow 100ms ease-in-out, opacity 100ms ease-in-out,
-    transform 100ms ease-out,
-    ${s("backgroundTransition")}
-      ${(props: ContainerProps) =>
-        props.$isAnimating ? `,width ${ANIMATION_MS}ms ease-out` : ""};
+  transition: box-shadow 150ms ease-in-out, transform 150ms ease-out,
+    ${(props: ContainerProps) =>
+      props.$isAnimating ? `,width ${ANIMATION_MS}ms ease-out` : ""};
   transform: translateX(
     ${(props) => (props.$mobileSidebarVisible ? 0 : "-100%")}
   );
@@ -294,7 +316,20 @@ const Container = styled(Flex)<ContainerProps>`
   }
 
   & > div {
-    opacity: ${(props) => (props.$collapsed && !props.$isHovering ? "0" : "1")};
+    transition: opacity 150ms ease-in-out;
+    opacity: ${(props) => {
+      if (props.$hidden) {
+        return "0";
+      }
+      if (props.$isHovering) {
+        return "1";
+      }
+      if (props.$isMobile) {
+        return props.$mobileSidebarVisible ? "1" : "0";
+      } else {
+        return props.$collapsed ? "0" : "1";
+      }
+    }};
   }
 
   ${breakpoint("tablet")`
@@ -319,7 +354,7 @@ const Container = styled(Flex)<ContainerProps>`
 
       & > div {
         opacity: 1;
-      }    
+      }
     }
   `};
 `;

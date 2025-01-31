@@ -14,37 +14,51 @@ const url = env.DATABASE_CONNECTION_POOL_URL || env.DATABASE_URL;
 const schema = env.DATABASE_SCHEMA;
 
 export function createDatabaseInstance(
-  url: string,
-  models: {
+  databaseUrl: string,
+  input: {
     [key: string]: typeof Model<
       InferAttributes<Model>,
       InferCreationAttributes<Model>
     >;
   }
-) {
-  return new Sequelize(url, {
-    logging: (msg) =>
-      process.env.DEBUG?.includes("database") && Logger.debug("database", msg),
-    typeValidation: true,
-    logQueryParameters: env.isDevelopment,
-    dialectOptions: {
-      ssl:
-        env.isProduction && !isSSLDisabled
-          ? {
-              // Ref.: https://github.com/brianc/node-postgres/issues/2009
-              rejectUnauthorized: false,
-            }
-          : false,
-    },
-    models: Object.values(models),
-    pool: {
-      max: poolMax,
-      min: poolMin,
-      acquire: 30000,
-      idle: 10000,
-    },
-    schema,
-  });
+): Sequelize {
+  try {
+    return new Sequelize(databaseUrl, {
+      logging: (msg) =>
+        process.env.DEBUG?.includes("database") &&
+        Logger.debug("database", msg),
+      typeValidation: true,
+      logQueryParameters: env.isDevelopment,
+      dialectOptions: {
+        ssl:
+          env.isProduction && !isSSLDisabled
+            ? {
+                // Ref.: https://github.com/brianc/node-postgres/issues/2009
+                rejectUnauthorized: false,
+              }
+            : false,
+      },
+      models: Object.values(input),
+      pool: {
+        max: poolMax,
+        min: poolMin,
+        acquire: 30000,
+        idle: 10000,
+      },
+      schema,
+    });
+  } catch (error) {
+    if (error instanceof URIError) {
+      Logger.fatal(
+        "Could not connect to database",
+        new Error(
+          `Failed to parse: ${databaseUrl}, ensure special characters in database URL are properly encoded`
+        )
+      );
+      process.exit(1);
+    }
+    throw error;
+  }
 }
 
 /**

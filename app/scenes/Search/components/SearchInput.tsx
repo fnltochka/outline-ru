@@ -4,10 +4,10 @@ import styled, { useTheme } from "styled-components";
 import { s } from "@shared/styles";
 import Flex from "~/components/Flex";
 
-type Props = React.HTMLAttributes<HTMLInputElement> & {
-  defaultValue?: string;
-  placeholder?: string;
-};
+interface Props extends React.HTMLAttributes<HTMLInputElement> {
+  name: string;
+  defaultValue: string;
+}
 
 function SearchInput(
   { defaultValue, ...rest }: Props,
@@ -59,7 +59,6 @@ const StyledInput = styled.input`
   outline: none;
   border: 0;
   background: ${s("sidebarBackground")};
-  transition: ${s("backgroundTransition")};
   border-radius: 4px;
 
   color: ${s("text")};

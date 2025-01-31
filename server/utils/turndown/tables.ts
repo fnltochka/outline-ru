@@ -10,7 +10,11 @@ const tableShouldBeSkippedCache = new WeakMap<HTMLTableElement, boolean>();
 
 function getAlignment(node: HTMLElement) {
   return node
-    ? (node.getAttribute("align") || node.style.textAlign || "").toLowerCase()
+    ? ((
+        node.getAttribute("align") ||
+        node.style.textAlign ||
+        ""
+      ).toLowerCase() as "left" | "right" | "center")
     : "";
 }
 
@@ -234,19 +238,7 @@ const nodeContains = (node: HTMLElement, types: string | string[]) => {
 };
 
 const tableShouldBeHtml = (tableNode: HTMLElement) =>
-  nodeContains(tableNode, "code") ||
-  nodeContains(tableNode, [
-    "UL",
-    "OL",
-    "H1",
-    "H2",
-    "H3",
-    "H4",
-    "H5",
-    "H6",
-    "HR",
-    "BLOCKQUOTE",
-  ]);
+  nodeContains(tableNode, ["code", "table"]);
 
 // Various conditions under which a table should be skipped - i.e. each cell
 // will be rendered one after the other as if they were paragraphs.

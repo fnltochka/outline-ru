@@ -422,7 +422,7 @@ describe("userProvisioner", () => {
     try {
       await userProvisioner({
         name: "Bad Domain User",
-        email: faker.internet.domainName(),
+        email: faker.internet.email(),
         teamId: team.id,
         ip,
         authentication: {
@@ -437,7 +437,7 @@ describe("userProvisioner", () => {
     }
 
     expect(error && error.toString()).toContain(
-      "The domain is not allowed for this team"
+      "The domain is not allowed for this workspace"
     );
   });
 });

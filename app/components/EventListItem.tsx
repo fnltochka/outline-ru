@@ -11,33 +11,31 @@ import {
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
-import { CompositeStateReturn } from "reakit/Composite";
 import styled, { css } from "styled-components";
-import { s } from "@shared/styles";
+import EventBoundary from "@shared/components/EventBoundary";
+import { s, hover } from "@shared/styles";
 import Document from "~/models/Document";
 import Event from "~/models/Event";
-import Avatar from "~/components/Avatar";
-import CompositeItem, {
-  Props as ItemProps,
-} from "~/components/List/CompositeItem";
-import Item, { Actions } from "~/components/List/Item";
+import { Avatar } from "~/components/Avatar";
+import Item, { Actions, Props as ItemProps } from "~/components/List/Item";
 import Time from "~/components/Time";
+import { useLocationSidebarContext } from "~/hooks/useLocationSidebarContext";
 import useStores from "~/hooks/useStores";
 import RevisionMenu from "~/menus/RevisionMenu";
-import { hover } from "~/styles";
 import Logger from "~/utils/Logger";
 import { documentHistoryPath } from "~/utils/routeHelpers";
 
 type Props = {
   document: Document;
-  event: Event;
+  event: Event<Document>;
   latest?: boolean;
-} & CompositeStateReturn;
+};
 
 const EventListItem = ({ event, latest, document, ...rest }: Props) => {
   const { t } = useTranslation();
   const { revisions } = useStores();
   const location = useLocation();
+  const sidebarContext = useLocationSidebarContext();
   const opts = {
     userName: event.actor.name,
   };
@@ -69,7 +67,10 @@ const EventListItem = ({ event, latest, document, ...rest }: Props) => {
       );
       to = {
         pathname: documentHistoryPath(document, event.modelId || "latest"),
-        state: { retainScrollPosition: true },
+        state: {
+          sidebarContext,
+          retainScrollPosition: true,
+        },
       };
       break;
 
@@ -143,7 +144,6 @@ const EventListItem = ({ event, latest, document, ...rest }: Props) => {
       title={
         <Time
           dateTime={event.createdAt}
-          tooltipDelay={500}
           format={{
             en_US: "MMM do, h:mm a",
             fr_FR: "'Le 'd MMMM 'à' H:mm",
@@ -162,7 +162,9 @@ const EventListItem = ({ event, latest, document, ...rest }: Props) => {
       }
       actions={
         isRevision && isActive && event.modelId && !latest ? (
-          <RevisionMenu document={document} revisionId={event.modelId} />
+          <StyledEventBoundary>
+            <RevisionMenu document={document} revisionId={event.modelId} />
+          </StyledEventBoundary>
         ) : undefined
       }
       onMouseEnter={prefetchRevision}
@@ -176,12 +178,12 @@ const BaseItem = React.forwardRef(function _BaseItem(
   { to, ...rest }: ItemProps,
   ref?: React.Ref<HTMLAnchorElement>
 ) {
-  if (to) {
-    return <CompositeListItem to={to} ref={ref} {...rest} />;
-  }
-
-  return <ListItem ref={ref} {...rest} />;
+  return <ListItem to={to} ref={ref} {...rest} />;
 });
+
+const StyledEventBoundary = styled(EventBoundary)`
+  height: 24px;
+`;
 
 const Subtitle = styled.span`
   svg {
@@ -237,10 +239,6 @@ const ItemStyle = css`
 `;
 
 const ListItem = styled(Item)`
-  ${ItemStyle}
-`;
-
-const CompositeListItem = styled(CompositeItem)`
   ${ItemStyle}
 `;
 

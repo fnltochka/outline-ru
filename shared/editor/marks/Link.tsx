@@ -1,5 +1,4 @@
-import Token from "markdown-it/lib/token";
-import { OpenIcon } from "outline-icons";
+import { Token } from "markdown-it";
 import { toggleMark } from "prosemirror-commands";
 import { InputRule } from "prosemirror-inputrules";
 import { MarkdownSerializerState } from "prosemirror-markdown";
@@ -11,24 +10,13 @@ import {
 } from "prosemirror-model";
 import { Command, EditorState, Plugin, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
-import * as React from "react";
-import ReactDOM from "react-dom";
 import { toast } from "sonner";
 import { sanitizeUrl } from "../../utils/urls";
-import getMarkRange from "../queries/getMarkRange";
-import isMarkActive from "../queries/isMarkActive";
-import { EventType } from "../types";
+import { getMarkRange } from "../queries/getMarkRange";
+import { isMarkActive } from "../queries/isMarkActive";
 import Mark from "./Mark";
 
 const LINK_INPUT_REGEX = /\[([^[]+)]\((\S+)\)$/;
-let icon: HTMLSpanElement;
-
-if (typeof window !== "undefined") {
-  const component = <OpenIcon size={16} />;
-  icon = document.createElement("span");
-  icon.className = "external-link";
-  ReactDOM.render(component, icon);
-}
 
 function isPlainURL(
   link: ProsemirrorMark,
@@ -67,9 +55,11 @@ export default class Link extends Mark {
       attrs: {
         href: {
           default: "",
+          validate: "string",
         },
         title: {
           default: null,
+          validate: "string|null",
         },
       },
       inclusive: false,
@@ -118,8 +108,7 @@ export default class Link extends Mark {
     return {
       "Mod-k": (state, dispatch) => {
         if (state.selection.empty) {
-          this.editor.events.emit(EventType.LinkToolbarOpen);
-          return true;
+          return false;
         }
 
         return toggleMark(type, { href: "" })(state, dispatch);
@@ -194,7 +183,10 @@ export default class Link extends Mark {
               return false;
             }
 
-            if (target.matches(".component-attachment *")) {
+            if (
+              target.role === "button" ||
+              target.matches(".component-attachment *")
+            ) {
               return false;
             }
 
@@ -240,7 +232,10 @@ export default class Link extends Mark {
               return false;
             }
 
-            if (event.target.matches(".component-attachment *")) {
+            if (
+              event.target.role === "button" ||
+              event.target.matches(".component-attachment *")
+            ) {
               return false;
             }
 

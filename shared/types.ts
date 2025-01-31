@@ -13,6 +13,15 @@ export enum StatusFilter {
   Draft = "draft",
 }
 
+export enum CollectionStatusFilter {
+  Archived = "archived",
+}
+
+export enum CommentStatusFilter {
+  Resolved = "resolved",
+  Unresolved = "unresolved",
+}
+
 export enum Client {
   Web = "web",
   Desktop = "desktop",
@@ -47,14 +56,15 @@ export enum FileOperationState {
 
 export enum MentionType {
   User = "user",
+  Document = "document",
 }
 
 export type PublicEnv = {
   ROOT_SHARE_ID?: string;
   analytics: {
-    service?: IntegrationService;
-    settings?: IntegrationSettings<IntegrationType.Analytics>;
-  };
+    service: IntegrationService;
+    settings: IntegrationSettings<IntegrationType.Analytics>;
+  }[];
 };
 
 export enum AttachmentPreset {
@@ -82,6 +92,8 @@ export enum IntegrationService {
   Grist = "grist",
   Slack = "slack",
   GoogleAnalytics = "google-analytics",
+  Matomo = "matomo",
+  Umami = "umami",
   GitHub = "github",
 }
 
@@ -90,12 +102,16 @@ export type UserCreatableIntegrationService = Extract<
   | IntegrationService.Diagrams
   | IntegrationService.Grist
   | IntegrationService.GoogleAnalytics
+  | IntegrationService.Matomo
+  | IntegrationService.Umami
 >;
 
 export const UserCreatableIntegrationService = {
   Diagrams: IntegrationService.Diagrams,
   Grist: IntegrationService.Grist,
   GoogleAnalytics: IntegrationService.GoogleAnalytics,
+  Matomo: IntegrationService.Matomo,
+  Umami: IntegrationService.Umami,
 } as const;
 
 export enum CollectionPermission {
@@ -107,6 +123,7 @@ export enum CollectionPermission {
 export enum DocumentPermission {
   Read = "read",
   ReadWrite = "read_write",
+  Admin = "admin",
 }
 
 export type IntegrationSettings<T> = T extends IntegrationType.Embed
@@ -120,7 +137,7 @@ export type IntegrationSettings<T> = T extends IntegrationType.Embed
       };
     }
   : T extends IntegrationType.Analytics
-  ? { measurementId: string }
+  ? { measurementId: string; instanceUrl?: string; scriptName?: string }
   : T extends IntegrationType.Post
   ? { url: string; channel: string; channelId: string }
   : T extends IntegrationType.Command
@@ -152,6 +169,10 @@ export enum UserPreference {
   SeamlessEdit = "seamlessEdit",
   /** Whether documents should start in full-width mode. */
   FullWidthDocuments = "fullWidthDocuments",
+  /** Whether to sort the comments by their order in the document. */
+  SortCommentsByOrderInDocument = "sortCommentsByOrderInDocument",
+  /** Whether smart text replacements should be enabled. */
+  EnableSmartText = "enableSmartText",
 }
 
 export type UserPreferences = { [key in UserPreference]?: boolean };
@@ -178,7 +199,13 @@ export type PublicTeam = {
   avatarUrl: string;
   name: string;
   customTheme: Partial<CustomTheme>;
+  tocPosition: TOCPosition;
 };
+
+export enum TOCPosition {
+  Left = "left",
+  Right = "right",
+}
 
 export enum TeamPreference {
   /** Whether documents have a separate edit mode instead of always editing. */
@@ -189,10 +216,18 @@ export enum TeamPreference {
   ViewersCanExport = "viewersCanExport",
   /** Whether members can invite new users. */
   MembersCanInvite = "membersCanInvite",
+  /** Whether members can create API keys. */
+  MembersCanCreateApiKey = "membersCanCreateApiKey",
+  /** Whether members can delete their user account. */
+  MembersCanDeleteAccount = "membersCanDeleteAccount",
+  /** Whether notification emails include document and comment content. */
+  PreviewsInEmails = "previewsInEmails",
   /** Whether users can comment on documents. */
   Commenting = "commenting",
   /** The custom theme for the team. */
   CustomTheme = "customTheme",
+  /** Side to display the document's table of contents in relation to the main content. */
+  TocPosition = "tocPosition",
 }
 
 export type TeamPreferences = {
@@ -200,13 +235,19 @@ export type TeamPreferences = {
   [TeamPreference.PublicBranding]?: boolean;
   [TeamPreference.ViewersCanExport]?: boolean;
   [TeamPreference.MembersCanInvite]?: boolean;
+  [TeamPreference.MembersCanCreateApiKey]?: boolean;
+  [TeamPreference.MembersCanDeleteAccount]?: boolean;
+  [TeamPreference.PreviewsInEmails]?: boolean;
   [TeamPreference.Commenting]?: boolean;
   [TeamPreference.CustomTheme]?: Partial<CustomTheme>;
+  [TeamPreference.TocPosition]?: TOCPosition;
 };
 
 export enum NavigationNodeType {
   Collection = "collection",
   Document = "document",
+  UserMembership = "userMembership",
+  GroupMembership = "groupMembership",
 }
 
 export type NavigationNode = {
@@ -214,6 +255,8 @@ export type NavigationNode = {
   title: string;
   url: string;
   emoji?: string;
+  icon?: string;
+  color?: string;
   children: NavigationNode[];
   isDraft?: boolean;
   collectionId?: string;
@@ -235,6 +278,7 @@ export enum NotificationEventType {
   CreateRevision = "revisions.create",
   CreateCollection = "collections.create",
   CreateComment = "comments.create",
+  ResolveComment = "comments.resolve",
   MentionedInDocument = "documents.mentioned",
   MentionedInComment = "comments.mentioned",
   InviteAccepted = "emails.invite_accepted",
@@ -257,20 +301,23 @@ export type NotificationSettings = {
     | boolean;
 };
 
-export const NotificationEventDefaults = {
-  [NotificationEventType.PublishDocument]: false,
-  [NotificationEventType.UpdateDocument]: true,
-  [NotificationEventType.CreateCollection]: false,
-  [NotificationEventType.CreateComment]: true,
-  [NotificationEventType.MentionedInDocument]: true,
-  [NotificationEventType.MentionedInComment]: true,
-  [NotificationEventType.InviteAccepted]: true,
-  [NotificationEventType.Onboarding]: true,
-  [NotificationEventType.Features]: true,
-  [NotificationEventType.ExportCompleted]: true,
-  [NotificationEventType.AddUserToDocument]: true,
-  [NotificationEventType.AddUserToCollection]: true,
-};
+export const NotificationEventDefaults: Record<NotificationEventType, boolean> =
+  {
+    [NotificationEventType.PublishDocument]: false,
+    [NotificationEventType.UpdateDocument]: true,
+    [NotificationEventType.CreateCollection]: false,
+    [NotificationEventType.CreateComment]: true,
+    [NotificationEventType.ResolveComment]: true,
+    [NotificationEventType.CreateRevision]: false,
+    [NotificationEventType.MentionedInDocument]: true,
+    [NotificationEventType.MentionedInComment]: true,
+    [NotificationEventType.InviteAccepted]: true,
+    [NotificationEventType.Onboarding]: true,
+    [NotificationEventType.Features]: true,
+    [NotificationEventType.ExportCompleted]: true,
+    [NotificationEventType.AddUserToDocument]: true,
+    [NotificationEventType.AddUserToCollection]: true,
+  };
 
 export enum UnfurlResourceType {
   OEmbed = "oembed",
@@ -298,6 +345,8 @@ export type UnfurlResponse = {
     type: UnfurlResourceType.Mention;
     /** Mentioned user's name */
     name: string;
+    /** Mentioned user's email */
+    email: string | null;
     /** Mentioned user's avatar URL */
     avatarUrl: string | null;
     /** Used to create mentioned user's avatar if no avatar URL provided */
@@ -374,4 +423,63 @@ export type JSONValue =
 
 export type JSONObject = { [x: string]: JSONValue };
 
-export type ProsemirrorData = JSONObject;
+export type ProsemirrorData = {
+  type: string;
+  content: ProsemirrorData[];
+  text?: string;
+  attrs?: JSONObject;
+  marks?: {
+    type: string;
+    attrs: JSONObject;
+  }[];
+};
+
+export type ProsemirrorDoc = {
+  type: "doc";
+  content: ProsemirrorData[];
+};
+
+export enum IconType {
+  SVG = "svg",
+  Emoji = "emoji",
+}
+
+export enum EmojiCategory {
+  People = "People",
+  Nature = "Nature",
+  Foods = "Foods",
+  Activity = "Activity",
+  Places = "Places",
+  Objects = "Objects",
+  Symbols = "Symbols",
+  Flags = "Flags",
+}
+
+export enum EmojiSkinTone {
+  Default = "Default",
+  Light = "Light",
+  MediumLight = "MediumLight",
+  Medium = "Medium",
+  MediumDark = "MediumDark",
+  Dark = "Dark",
+}
+
+export type Emoji = {
+  id: string;
+  name: string;
+  value: string;
+};
+
+export type EmojiVariants = {
+  [EmojiSkinTone.Default]: Emoji;
+  [EmojiSkinTone.Light]?: Emoji;
+  [EmojiSkinTone.MediumLight]?: Emoji;
+  [EmojiSkinTone.Medium]?: Emoji;
+  [EmojiSkinTone.MediumDark]?: Emoji;
+  [EmojiSkinTone.Dark]?: Emoji;
+};
+
+export type ReactionSummary = {
+  emoji: string;
+  userIds: string[];
+};

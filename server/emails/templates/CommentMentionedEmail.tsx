@@ -1,12 +1,10 @@
 import * as React from "react";
 import { NotificationEventType } from "@shared/types";
-import { Day } from "@shared/utils/time";
 import { Collection, Comment, Document } from "@server/models";
-import HTMLHelper from "@server/models/helpers/HTMLHelper";
 import NotificationSettingsHelper from "@server/models/helpers/NotificationSettingsHelper";
-import ProsemirrorHelper from "@server/models/helpers/ProsemirrorHelper";
-import TextHelper from "@server/models/helpers/TextHelper";
-import BaseEmail, { EmailProps } from "./BaseEmail";
+import { ProsemirrorHelper } from "@server/models/helpers/ProsemirrorHelper";
+import { can } from "@server/policies";
+import BaseEmail, { EmailMessageCategory, EmailProps } from "./BaseEmail";
 import Body from "./components/Body";
 import Button from "./components/Button";
 import Diff from "./components/Diff";
@@ -34,13 +32,16 @@ type BeforeSend = {
 type Props = InputProps & BeforeSend;
 
 /**
- * Email sent to a user when a new comment is created in a document they are
- * subscribed to.
+ * Email sent to a user when they are mentioned in a comment.
  */
 export default class CommentMentionedEmail extends BaseEmail<
   InputProps,
   BeforeSend
 > {
+  protected get category() {
+    return EmailMessageCategory.Notification;
+  }
+
   protected async beforeSend(props: InputProps) {
     const { documentId, commentId } = props;
     const document = await Document.unscoped().findByPk(documentId);
@@ -53,29 +54,18 @@ export default class CommentMentionedEmail extends BaseEmail<
       return false;
     }
 
-    const comment = await Comment.findByPk(commentId);
-    if (!comment) {
+    const [comment, team] = await Promise.all([
+      Comment.findByPk(commentId),
+      document.$get("team"),
+    ]);
+    if (!comment || !team) {
       return false;
     }
 
-    let body;
-    let content = ProsemirrorHelper.toHTML(
-      ProsemirrorHelper.toProsemirror(comment.data),
-      {
-        centered: false,
-      }
+    const body = await this.htmlForData(
+      team,
+      ProsemirrorHelper.toProsemirror(comment.data)
     );
-
-    content = await TextHelper.attachmentsToSignedUrls(
-      content,
-      document.teamId,
-      (4 * Day) / 1000
-    );
-
-    if (content) {
-      // inline all css so that it works in as many email providers as possible.
-      body = HTMLHelper.inlineCSS(content);
-    }
 
     return {
       document,
@@ -92,8 +82,17 @@ export default class CommentMentionedEmail extends BaseEmail<
     );
   }
 
-  protected subject({ actorName, document }: Props) {
-    return `${actorName} mentioned you in “${document.title}”`;
+  protected replyTo({ notification }: Props) {
+    if (notification?.user && notification.actor?.email) {
+      if (can(notification.user, "readEmail", notification.actor)) {
+        return notification.actor.email;
+      }
+    }
+    return;
+  }
+
+  protected subject({ document }: Props) {
+    return `Mentioned you in “${document.titleWithDefault}”`;
   }
 
   protected preview({ actorName }: Props): string {
@@ -112,7 +111,7 @@ export default class CommentMentionedEmail extends BaseEmail<
     collection,
   }: Props): string {
     return `
-${actorName} mentioned you in a comment on "${document.title}"${
+${actorName} mentioned you in a comment on "${document.titleWithDefault}"${
       collection.name ? `in the ${collection.name} collection` : ""
     }.
 
@@ -140,10 +139,10 @@ Open Thread: ${teamUrl}${document.url}?commentId=${commentId}
         <Header />
 
         <Body>
-          <Heading>{document.title}</Heading>
+          <Heading>{document.titleWithDefault}</Heading>
           <p>
             {actorName} mentioned you in a comment on{" "}
-            <a href={threadLink}>{document.title}</a>{" "}
+            <a href={threadLink}>{document.titleWithDefault}</a>{" "}
             {collection.name ? `in the ${collection.name} collection` : ""}.
           </p>
           {body && (

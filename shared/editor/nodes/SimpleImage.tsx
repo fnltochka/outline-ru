@@ -1,4 +1,4 @@
-import Token from "markdown-it/lib/token";
+import { Token } from "markdown-it";
 import { InputRule } from "prosemirror-inputrules";
 import { Node as ProsemirrorNode, NodeSpec, NodeType } from "prosemirror-model";
 import { TextSelection, NodeSelection, Command } from "prosemirror-state";
@@ -11,7 +11,7 @@ import insertFiles, { Options } from "../commands/insertFiles";
 import { default as ImageComponent } from "../components/Image";
 import { MarkdownSerializerState } from "../lib/markdown/serializer";
 import uploadPlaceholderPlugin from "../lib/uploadPlaceholder";
-import uploadPlugin from "../lib/uploadPlugin";
+import { UploadPlugin } from "../plugins/UploadPlugin";
 import { ComponentProps } from "../types";
 import Node from "./Node";
 
@@ -85,11 +85,39 @@ export default class SimpleImage extends Node {
       const $pos = view.state.doc.resolve(getPos());
       const transaction = view.state.tr.setSelection(new NodeSelection($pos));
       view.dispatch(transaction);
+      view.focus();
     };
 
   component = (props: ComponentProps) => (
     <ImageComponent {...props} onClick={this.handleSelect(props)} />
   );
+
+  keys(): Record<string, Command> {
+    return {
+      Enter: (state, dispatch) => {
+        const { selection } = state;
+        if (
+          selection instanceof NodeSelection &&
+          selection.node?.type.name === this.name
+        ) {
+          const tr = state.tr;
+          if (dispatch) {
+            dispatch(
+              tr
+                .insert(selection.to, state.schema.nodes.paragraph.create({}))
+                .setSelection(
+                  TextSelection.near(tr.doc.resolve(selection.to + 2), 1)
+                )
+                .scrollIntoView()
+            );
+          }
+          return true;
+        }
+
+        return false;
+      },
+    };
+  }
 
   toMarkdown(state: MarkdownSerializerState, node: ProsemirrorNode) {
     state.write(
@@ -210,6 +238,6 @@ export default class SimpleImage extends Node {
   }
 
   get plugins() {
-    return [uploadPlaceholderPlugin, uploadPlugin(this.options)];
+    return [uploadPlaceholderPlugin, new UploadPlugin(this.options)];
   }
 }

@@ -3,19 +3,21 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useMenuState } from "reakit/Menu";
 import { toast } from "sonner";
+import { UserRole } from "@shared/types";
 import User from "~/models/User";
 import ContextMenu from "~/components/ContextMenu";
 import OverflowMenuButton from "~/components/ContextMenu/OverflowMenuButton";
 import Template from "~/components/ContextMenu/Template";
 import {
-  UserChangeToAdminDialog,
-  UserChangeToMemberDialog,
-  UserChangeToViewerDialog,
   UserSuspendDialog,
   UserChangeNameDialog,
+  UserChangeEmailDialog,
 } from "~/components/UserDialogs";
 import { actionToMenuItem } from "~/actions";
-import { deleteUserActionFactory } from "~/actions/definitions/users";
+import {
+  deleteUserActionFactory,
+  updateUserRoleActionFactory,
+} from "~/actions/definitions/users";
 import useActionContext from "~/hooks/useActionContext";
 import usePolicy from "~/hooks/usePolicy";
 import useStores from "~/hooks/useStores";
@@ -35,54 +37,6 @@ function UserMenu({ user }: Props) {
     isContextMenu: true,
   });
 
-  const handlePromote = React.useCallback(
-    (ev: React.SyntheticEvent) => {
-      ev.preventDefault();
-      dialogs.openModal({
-        title: t("Change role to admin"),
-        content: (
-          <UserChangeToAdminDialog
-            user={user}
-            onSubmit={dialogs.closeAllModals}
-          />
-        ),
-      });
-    },
-    [dialogs, t, user]
-  );
-
-  const handleMember = React.useCallback(
-    (ev: React.SyntheticEvent) => {
-      ev.preventDefault();
-      dialogs.openModal({
-        title: t("Change role to editor"),
-        content: (
-          <UserChangeToMemberDialog
-            user={user}
-            onSubmit={dialogs.closeAllModals}
-          />
-        ),
-      });
-    },
-    [dialogs, t, user]
-  );
-
-  const handleViewer = React.useCallback(
-    (ev: React.SyntheticEvent) => {
-      ev.preventDefault();
-      dialogs.openModal({
-        title: t("Change role to viewer"),
-        content: (
-          <UserChangeToViewerDialog
-            user={user}
-            onSubmit={dialogs.closeAllModals}
-          />
-        ),
-      });
-    },
-    [dialogs, t, user]
-  );
-
   const handleChangeName = React.useCallback(
     (ev: React.SyntheticEvent) => {
       ev.preventDefault();
@@ -90,6 +44,22 @@ function UserMenu({ user }: Props) {
         title: t("Change name"),
         content: (
           <UserChangeNameDialog user={user} onSubmit={dialogs.closeAllModals} />
+        ),
+      });
+    },
+    [dialogs, t, user]
+  );
+
+  const handleChangeEmail = React.useCallback(
+    (ev: React.SyntheticEvent) => {
+      ev.preventDefault();
+      dialogs.openModal({
+        title: t("Change email"),
+        content: (
+          <UserChangeEmailDialog
+            user={user}
+            onSubmit={dialogs.closeAllModals}
+          />
         ),
       });
     },
@@ -149,28 +119,28 @@ function UserMenu({ user }: Props) {
           {...menu}
           items={[
             {
-              type: "button",
-              title: `${t("Change role to editor")}…`,
-              onClick: handleMember,
-              visible: can.demote && user.role !== "member",
-            },
-            {
-              type: "button",
-              title: `${t("Change role to viewer")}…`,
-              onClick: handleViewer,
-              visible: can.demote && user.role !== "viewer",
-            },
-            {
-              type: "button",
-              title: `${t("Change role to admin")}…`,
-              onClick: handlePromote,
-              visible: can.promote && user.role !== "admin",
+              type: "submenu",
+              title: t("Change role"),
+              visible: can.demote || can.promote,
+              items: [UserRole.Admin, UserRole.Member, UserRole.Viewer].map(
+                (role) =>
+                  actionToMenuItem(
+                    updateUserRoleActionFactory(user, role),
+                    context
+                  )
+              ),
             },
             {
               type: "button",
               title: `${t("Change name")}…`,
               onClick: handleChangeName,
-              visible: can.update && user.role !== "admin",
+              visible: can.update,
+            },
+            {
+              type: "button",
+              title: `${t("Change email")}…`,
+              onClick: handleChangeEmail,
+              visible: can.update,
             },
             {
               type: "button",
@@ -197,6 +167,7 @@ function UserMenu({ user }: Props) {
             {
               type: "button",
               title: `${t("Suspend user")}…`,
+              dangerous: true,
               onClick: handleSuspend,
               visible: !user.isInvited && !user.isSuspended,
             },

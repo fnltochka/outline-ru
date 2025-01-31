@@ -3,7 +3,6 @@ import {
   SearchIcon,
   ArchiveIcon,
   TrashIcon,
-  EditIcon,
   OpenIcon,
   SettingsIcon,
   KeyboardIcon,
@@ -12,6 +11,7 @@ import {
   ProfileIcon,
   BrowserIcon,
   ShapesIcon,
+  DraftsIcon,
 } from "outline-icons";
 import * as React from "react";
 import { UrlHelper } from "@shared/utils/UrlHelper";
@@ -57,7 +57,7 @@ export const navigateToDrafts = createAction({
   name: ({ t }) => t("Drafts"),
   analyticsName: "Navigate to drafts",
   section: NavigationSection,
-  icon: <EditIcon />,
+  icon: <DraftsIcon />,
   perform: () => history.push(draftsPath()),
   visible: ({ location }) => location.pathname !== draftsPath(),
 });
@@ -89,6 +89,15 @@ export const navigateToSettings = createAction({
   icon: <SettingsIcon />,
   visible: () => stores.policies.abilities(stores.auth.team?.id || "").update,
   perform: () => history.push(settingsPath()),
+});
+
+export const navigateToWorkspaceSettings = createAction({
+  name: ({ t }) => t("Settings"),
+  analyticsName: "Navigate to workspace settings",
+  section: NavigationSection,
+  icon: <SettingsIcon />,
+  visible: () => stores.policies.abilities(stores.auth.team?.id || "").update,
+  perform: () => history.push(settingsPath("details")),
 });
 
 export const navigateToProfileSettings = createAction({
@@ -125,6 +134,15 @@ export const navigateToAccountPreferences = createAction({
   iconInContextMenu: false,
   icon: <SettingsIcon />,
   perform: () => history.push(settingsPath("preferences")),
+});
+
+export const openDocumentation = createAction({
+  name: ({ t }) => t("Documentation"),
+  analyticsName: "Open documentation",
+  section: NavigationSection,
+  iconInContextMenu: false,
+  icon: <OpenIcon />,
+  perform: () => window.open(UrlHelper.guide),
 });
 
 export const openAPIDocumentation = createAction({
@@ -207,7 +225,9 @@ export const logout = createAction({
   perform: async () => {
     await stores.auth.logout();
     if (env.OIDC_LOGOUT_URI) {
-      window.location.replace(env.OIDC_LOGOUT_URI);
+      setTimeout(() => {
+        window.location.replace(env.OIDC_LOGOUT_URI);
+      }, 200);
     }
   },
 });
@@ -218,6 +238,7 @@ export const rootNavigationActions = [
   navigateToArchive,
   navigateToTrash,
   downloadApp,
+  openDocumentation,
   openAPIDocumentation,
   openFeedbackUrl,
   openBugReportUrl,

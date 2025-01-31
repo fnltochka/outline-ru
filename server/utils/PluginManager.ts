@@ -58,10 +58,15 @@ export type Plugin<T extends Hook> = {
   priority?: number;
 };
 
+/**
+ * Server plugin manager.
+ */
 export class PluginManager {
   private static plugins = new Map<Hook, Plugin<Hook>[]>();
+
   /**
-   * Add plugins
+   * Add plugins to the manager.
+   *
    * @param plugins
    */
   public static add(plugins: Array<Plugin<Hook>> | Plugin<Hook>) {
@@ -81,12 +86,16 @@ export class PluginManager {
       .get(plugin.type)!
       .push({ ...plugin, priority: plugin.priority ?? PluginPriority.Normal });
 
-    Logger.debug(
-      "plugins",
-      `Plugin(type=${plugin.type}) registered ${
-        "name" in plugin.value ? plugin.value.name : ""
-      } ${plugin.description ? `(${plugin.description})` : ""}`
-    );
+    // Do not log plugin registration in forked worker processes, one log from the master process
+    // is enough. This can be detected by the presence of `process.send`.
+    if (process.send === undefined) {
+      Logger.debug(
+        "plugins",
+        `Plugin(type=${plugin.type}) registered ${
+          "name" in plugin.value ? plugin.value.name : ""
+        } ${plugin.description ? `(${plugin.description})` : ""}`
+      );
+    }
   }
 
   /**

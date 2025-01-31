@@ -1,17 +1,24 @@
 import Router from "koa-router";
 import { v4 as uuidv4 } from "uuid";
 import { AttachmentPreset } from "@shared/types";
-import { bytesToHumanReadable } from "@shared/utils/files";
+import { bytesToHumanReadable, getFileNameFromUrl } from "@shared/utils/files";
 import { AttachmentValidation } from "@shared/validations";
-import { AuthorizationError, ValidationError } from "@server/errors";
+import { createContext } from "@server/context";
+import {
+  AuthorizationError,
+  InvalidRequestError,
+  ValidationError,
+} from "@server/errors";
 import auth from "@server/middlewares/authentication";
 import { rateLimiter } from "@server/middlewares/rateLimiter";
 import { transaction } from "@server/middlewares/transaction";
 import validate from "@server/middlewares/validate";
-import { Attachment, Document, Event } from "@server/models";
+import { Attachment, Document } from "@server/models";
 import AttachmentHelper from "@server/models/helpers/AttachmentHelper";
 import { authorize } from "@server/policies";
 import { presentAttachment } from "@server/presenters";
+import UploadAttachmentFromUrlTask from "@server/queues/tasks/UploadAttachmentFromUrlTask";
+import { sequelize } from "@server/storage/database";
 import FileStorage from "@server/storage/files";
 import BaseStorage from "@server/storage/files/BaseStorage";
 import { APIContext } from "@server/types";
@@ -64,33 +71,17 @@ router.post(
       userId: user.id,
     });
 
-    const attachment = await Attachment.create(
-      {
-        id: modelId,
-        key,
-        acl,
-        size,
-        expiresAt: AttachmentHelper.presetToExpiry(preset),
-        contentType,
-        documentId,
-        teamId: user.teamId,
-        userId: user.id,
-      },
-      { transaction }
-    );
-    await Event.create(
-      {
-        name: "attachments.create",
-        data: {
-          name,
-        },
-        modelId,
-        teamId: user.teamId,
-        actorId: user.id,
-        ip: ctx.request.ip,
-      },
-      { transaction }
-    );
+    const attachment = await Attachment.createWithCtx(ctx, {
+      id: modelId,
+      key,
+      acl,
+      size,
+      expiresAt: AttachmentHelper.presetToExpiry(preset),
+      contentType,
+      documentId,
+      teamId: user.teamId,
+      userId: user.id,
+    });
 
     const presignedPost = await FileStorage.getPresignedPost(
       key,
@@ -122,31 +113,100 @@ router.post(
 );
 
 router.post(
+  "attachments.createFromUrl",
+  rateLimiter(RateLimiterStrategy.TwentyFivePerMinute),
+  auth(),
+  validate(T.AttachmentsCreateFromUrlSchema),
+  async (ctx: APIContext<T.AttachmentCreateFromUrlReq>) => {
+    const { url, documentId, preset } = ctx.input.body;
+    const { user, type } = ctx.state.auth;
+
+    if (preset !== AttachmentPreset.DocumentAttachment || !documentId) {
+      throw ValidationError(
+        "Only document attachments can be created from a URL"
+      );
+    }
+
+    const document = await Document.findByPk(documentId, {
+      userId: user.id,
+    });
+    authorize(user, "update", document);
+
+    const name = getFileNameFromUrl(url) ?? "file";
+    const modelId = uuidv4();
+    const acl = AttachmentHelper.presetToAcl(preset);
+    const key = AttachmentHelper.getKey({
+      acl,
+      id: modelId,
+      name,
+      userId: user.id,
+    });
+
+    // Does not use transaction middleware, as attachment must be persisted
+    // before the job is scheduled.
+    const attachment = await sequelize.transaction(async (transaction) =>
+      Attachment.createWithCtx(
+        createContext({
+          authType: type,
+          user,
+          ip: ctx.ip,
+          transaction,
+        }),
+        {
+          id: modelId,
+          key,
+          acl,
+          size: 0,
+          expiresAt: AttachmentHelper.presetToExpiry(preset),
+          contentType: "application/octet-stream",
+          documentId,
+          teamId: user.teamId,
+          userId: user.id,
+        }
+      )
+    );
+
+    const job = await UploadAttachmentFromUrlTask.schedule({
+      attachmentId: attachment.id,
+      url,
+    });
+
+    const response = await job.finished();
+    if ("error" in response) {
+      throw InvalidRequestError(response.error);
+    }
+
+    ctx.body = {
+      data: presentAttachment(attachment),
+    };
+  }
+);
+
+router.post(
   "attachments.delete",
   auth(),
   validate(T.AttachmentDeleteSchema),
+  transaction(),
   async (ctx: APIContext<T.AttachmentDeleteReq>) => {
     const { id } = ctx.input.body;
     const { user } = ctx.state.auth;
+    const { transaction } = ctx.state;
     const attachment = await Attachment.findByPk(id, {
       rejectOnEmpty: true,
+      lock: transaction.LOCK.UPDATE,
+      transaction,
     });
 
     if (attachment.documentId) {
       const document = await Document.findByPk(attachment.documentId, {
         userId: user.id,
+        transaction,
       });
       authorize(user, "update", document);
     }
 
     authorize(user, "delete", attachment);
-    await attachment.destroy();
-    await Event.create({
-      name: "attachments.delete",
-      teamId: user.teamId,
-      actorId: user.id,
-      ip: ctx.request.ip,
-    });
+    await attachment.destroyWithCtx(ctx);
 
     ctx.body = {
       success: true,
@@ -168,9 +228,14 @@ const handleAttachmentsRedirect = async (
     throw AuthorizationError();
   }
 
-  await attachment.update({
-    lastAccessedAt: new Date(),
-  });
+  await attachment.update(
+    {
+      lastAccessedAt: new Date(),
+    },
+    {
+      silent: true,
+    }
+  );
 
   if (attachment.isPrivate) {
     ctx.set(

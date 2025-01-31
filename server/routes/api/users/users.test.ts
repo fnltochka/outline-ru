@@ -1,4 +1,7 @@
+import { faker } from "@faker-js/faker";
 import { TeamPreference, UserRole } from "@shared/types";
+import ConfirmUpdateEmail from "@server/emails/templates/ConfirmUpdateEmail";
+import { TeamDomain } from "@server/models";
 import {
   buildTeam,
   buildAdmin,
@@ -18,9 +21,27 @@ afterAll(() => {
 });
 
 describe("#users.list", () => {
+  it("should return users whose emails match the query", async () => {
+    const user = await buildUser({
+      name: "John Doe",
+      email: "john.doe@example.com",
+    });
+
+    const res = await server.post("/api/users.list", {
+      body: {
+        query: "john.doe@e",
+        token: user.getJwtToken(),
+      },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toEqual(user.id);
+  });
+
   it("should allow filtering by user name", async () => {
     const user = await buildUser({
-      name: "Tester",
+      name: "Tèster",
     });
     // suspended user should not be returned
     await buildUser({
@@ -189,20 +210,142 @@ describe("#users.list", () => {
     expect(body.data[0].id).toEqual(user.id);
   });
 
-  it("should require admin for detailed info", async () => {
+  it("should restrict guest from viewing other user's email", async () => {
     const team = await buildTeam();
-    await buildAdmin({ teamId: team.id });
-    const user = await buildUser({ teamId: team.id });
+    await buildUser({ teamId: team.id });
+    const guest = await buildUser({ teamId: team.id, role: UserRole.Guest });
     const res = await server.post("/api/users.list", {
       body: {
-        token: user.getJwtToken(),
+        token: guest.getJwtToken(),
       },
     });
     const body = await res.json();
     expect(res.status).toEqual(200);
-    expect(body.data.length).toEqual(2);
+    expect(body.data).toHaveLength(2);
     expect(body.data[0].email).toEqual(undefined);
-    expect(body.data[1].email).toEqual(user.email);
+    expect(body.data[1].email).toEqual(guest.email);
+  });
+
+  it("should restrict viewer from viewing other user's email", async () => {
+    const team = await buildTeam();
+    await buildUser({ teamId: team.id });
+    const viewer = await buildUser({ teamId: team.id, role: UserRole.Viewer });
+    const res = await server.post("/api/users.list", {
+      body: {
+        token: viewer.getJwtToken(),
+      },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].email).toEqual(undefined);
+    expect(body.data[1].email).toEqual(viewer.email);
+  });
+
+  it("should allow member to view other user's email", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const member = await buildUser({ teamId: team.id, role: UserRole.Member });
+    const res = await server.post("/api/users.list", {
+      body: {
+        token: member.getJwtToken(),
+      },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].email).toEqual(user.email);
+    expect(body.data[1].email).toEqual(member.email);
+  });
+
+  it("should restrict guest from viewing other user's details", async () => {
+    const team = await buildTeam();
+    await buildUser({ teamId: team.id });
+    const guest = await buildUser({ teamId: team.id, role: UserRole.Guest });
+    const res = await server.post("/api/users.list", {
+      body: {
+        token: guest.getJwtToken(),
+      },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].language).toEqual(undefined);
+    expect(body.data[0].preferences).toEqual(undefined);
+    expect(body.data[0].notificationSettings).toEqual(undefined);
+    expect(body.data[1].language).toEqual(guest.language);
+    expect(body.data[1].preferences).toEqual(guest.preferences);
+    expect(body.data[1].notificationSettings).toEqual(
+      guest.notificationSettings
+    );
+  });
+
+  it("should restrict viewer from viewing other user's details", async () => {
+    const team = await buildTeam();
+    await buildUser({ teamId: team.id });
+    const viewer = await buildUser({ teamId: team.id, role: UserRole.Viewer });
+    const res = await server.post("/api/users.list", {
+      body: {
+        token: viewer.getJwtToken(),
+      },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].language).toEqual(undefined);
+    expect(body.data[0].preferences).toEqual(undefined);
+    expect(body.data[0].notificationSettings).toEqual(undefined);
+    expect(body.data[1].language).toEqual(viewer.language);
+    expect(body.data[1].preferences).toEqual(viewer.preferences);
+    expect(body.data[1].notificationSettings).toEqual(
+      viewer.notificationSettings
+    );
+  });
+
+  it("should restrict member from viewing other user's details", async () => {
+    const team = await buildTeam();
+    await buildUser({ teamId: team.id });
+    const member = await buildUser({ teamId: team.id, role: UserRole.Member });
+    const res = await server.post("/api/users.list", {
+      body: {
+        token: member.getJwtToken(),
+      },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].language).toEqual(undefined);
+    expect(body.data[0].preferences).toEqual(undefined);
+    expect(body.data[0].notificationSettings).toEqual(undefined);
+    expect(body.data[1].language).toEqual(member.language);
+    expect(body.data[1].preferences).toEqual(member.preferences);
+    expect(body.data[1].notificationSettings).toEqual(
+      member.notificationSettings
+    );
+  });
+
+  it("should allow admin to view other user's details", async () => {
+    const team = await buildTeam();
+    const admin = await buildAdmin({ teamId: team.id });
+    const user = await buildUser({ teamId: team.id });
+    const res = await server.post("/api/users.list", {
+      body: {
+        token: admin.getJwtToken(),
+      },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].language).toEqual(user.language);
+    expect(body.data[0].preferences).toEqual(user.preferences);
+    expect(body.data[0].notificationSettings).toEqual(
+      user.notificationSettings
+    );
+    expect(body.data[1].language).toEqual(admin.language);
+    expect(body.data[1].preferences).toEqual(admin.preferences);
+    expect(body.data[1].notificationSettings).toEqual(
+      admin.notificationSettings
+    );
   });
 });
 
@@ -390,6 +533,21 @@ describe("#users.invite", () => {
     expect(body.data.users[0].role).toEqual(UserRole.Viewer);
   });
 
+  it("should limit number of invites", async () => {
+    const user = await buildUser();
+    const res = await server.post("/api/users.invite", {
+      body: {
+        token: user.getJwtToken(),
+        invites: new Array(21).fill({
+          email: "test@example.com",
+          name: "Test",
+          role: "viewer",
+        }),
+      },
+    });
+    expect(res.status).toEqual(400);
+  });
+
   it("should require authentication", async () => {
     const res = await server.post("/api/users.invite");
     expect(res.status).toEqual(401);
@@ -547,11 +705,103 @@ describe("#users.update", () => {
     expect(body.data.preferences.rememberLastPath).toBe(true);
   });
 
+  it("should update user timezone", async () => {
+    const user = await buildUser();
+    const res = await server.post("/api/users.update", {
+      body: {
+        token: user.getJwtToken(),
+        timezone: "Asia/Calcutta",
+      },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(body.data.timezone).toEqual("Asia/Calcutta");
+  });
+
   it("should require authentication", async () => {
     const res = await server.post("/api/users.update");
     const body = await res.json();
     expect(res.status).toEqual(401);
     expect(body).toMatchSnapshot();
+  });
+});
+
+describe("#users.updateEmail", () => {
+  describe("post", () => {
+    it("should trigger verification email", async () => {
+      const spy = jest.spyOn(ConfirmUpdateEmail.prototype, "schedule");
+      const user = await buildUser();
+      const res = await server.post("/api/users.updateEmail", {
+        body: {
+          token: user.getJwtToken(),
+          email: faker.internet.email(),
+        },
+      });
+      const body = await res.json();
+
+      expect(res.status).toEqual(200);
+      expect(body.success).toEqual(true);
+      expect(spy).toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
+    it("should fail if email not in allowed domains", async () => {
+      const user = await buildUser();
+
+      await TeamDomain.create({
+        teamId: user.teamId,
+        name: "example.com",
+        createdById: user.id,
+      });
+
+      const res = await server.post("/api/users.updateEmail", {
+        body: {
+          token: user.getJwtToken(),
+          email: faker.internet.email(),
+        },
+      });
+      const body = await res.json();
+      expect(res.status).toEqual(400);
+      expect(body).toMatchSnapshot();
+    });
+
+    it("should fail if email not unique in workspace", async () => {
+      const user = await buildUser();
+      const email = faker.internet.email().toLowerCase();
+      await buildUser({ teamId: user.teamId, email });
+
+      const res = await server.post("/api/users.updateEmail", {
+        body: {
+          token: user.getJwtToken(),
+          email,
+        },
+      });
+      const body = await res.json();
+      expect(res.status).toEqual(400);
+      expect(body).toMatchSnapshot();
+    });
+
+    it("should require authentication", async () => {
+      const res = await server.post("/api/users.updateEmail");
+      const body = await res.json();
+      expect(res.status).toEqual(401);
+      expect(body).toMatchSnapshot();
+    });
+  });
+
+  describe("get", () => {
+    it("should update email", async () => {
+      const user = await buildUser();
+      const email = faker.internet.email();
+      await server.get(
+        `/api/users.updateEmail?token=${user.getJwtToken()}&code=${user.getEmailUpdateToken(
+          email
+        )}&follow=true`
+      );
+
+      await user.reload();
+      expect(user.email).toEqual(email);
+    });
   });
 });
 
@@ -779,89 +1029,5 @@ describe("#users.activate", () => {
     const body = await res.json();
     expect(res.status).toEqual(403);
     expect(body).toMatchSnapshot();
-  });
-});
-
-describe("#users.count", () => {
-  it("should count active users", async () => {
-    const team = await buildTeam();
-    const user = await buildUser({ teamId: team.id });
-    const res = await server.post("/api/users.count", {
-      body: {
-        token: user.getJwtToken(),
-      },
-    });
-    const body = await res.json();
-    expect(res.status).toEqual(200);
-    expect(body.data.counts.all).toEqual(1);
-    expect(body.data.counts.admins).toEqual(0);
-    expect(body.data.counts.invited).toEqual(0);
-    expect(body.data.counts.suspended).toEqual(0);
-    expect(body.data.counts.active).toEqual(1);
-  });
-
-  it("should count admin users", async () => {
-    const team = await buildTeam();
-    const user = await buildAdmin({
-      teamId: team.id,
-    });
-    const res = await server.post("/api/users.count", {
-      body: {
-        token: user.getJwtToken(),
-      },
-    });
-    const body = await res.json();
-    expect(res.status).toEqual(200);
-    expect(body.data.counts.all).toEqual(1);
-    expect(body.data.counts.admins).toEqual(1);
-    expect(body.data.counts.invited).toEqual(0);
-    expect(body.data.counts.suspended).toEqual(0);
-    expect(body.data.counts.active).toEqual(1);
-  });
-
-  it("should count suspended users", async () => {
-    const team = await buildTeam();
-    const user = await buildUser({ teamId: team.id });
-    await buildUser({
-      teamId: team.id,
-      suspendedAt: new Date(),
-    });
-    const res = await server.post("/api/users.count", {
-      body: {
-        token: user.getJwtToken(),
-      },
-    });
-    const body = await res.json();
-    expect(res.status).toEqual(200);
-    expect(body.data.counts.all).toEqual(2);
-    expect(body.data.counts.admins).toEqual(0);
-    expect(body.data.counts.invited).toEqual(0);
-    expect(body.data.counts.suspended).toEqual(1);
-    expect(body.data.counts.active).toEqual(1);
-  });
-
-  it("should count invited users", async () => {
-    const team = await buildTeam();
-    const user = await buildUser({
-      teamId: team.id,
-      lastActiveAt: null,
-    });
-    const res = await server.post("/api/users.count", {
-      body: {
-        token: user.getJwtToken(),
-      },
-    });
-    const body = await res.json();
-    expect(res.status).toEqual(200);
-    expect(body.data.counts.all).toEqual(1);
-    expect(body.data.counts.admins).toEqual(0);
-    expect(body.data.counts.invited).toEqual(1);
-    expect(body.data.counts.suspended).toEqual(0);
-    expect(body.data.counts.active).toEqual(0);
-  });
-
-  it("should require authentication", async () => {
-    const res = await server.post("/api/users.count");
-    expect(res.status).toEqual(401);
   });
 });

@@ -1,4 +1,4 @@
-import Token from "markdown-it/lib/token";
+import { Token } from "markdown-it";
 import { NodeSpec, Node as ProsemirrorNode, NodeType } from "prosemirror-model";
 import {
   splitListItem,
@@ -87,6 +87,13 @@ export default class CheckboxItem extends Node {
       view.dispatch(transaction);
     }
   };
+
+  commands({ type }: { type: NodeType }) {
+    return {
+      indentCheckboxList: () => sinkListItem(type),
+      outdentCheckboxList: () => liftListItem(type),
+    };
+  }
 
   keys({ type }: { type: NodeType }) {
     return {

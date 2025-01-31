@@ -1,23 +1,32 @@
 import {
+  ArchiveIcon,
   CollectionIcon,
   EditIcon,
   PadlockIcon,
   PlusIcon,
+  RestoreIcon,
+  SearchIcon,
+  ShapesIcon,
   StarredIcon,
   TrashIcon,
   UnstarredIcon,
 } from "outline-icons";
 import * as React from "react";
+import { toast } from "sonner";
 import stores from "~/stores";
 import Collection from "~/models/Collection";
-import CollectionPermissions from "~/scenes/CollectionPermissions";
 import { CollectionEdit } from "~/components/Collection/CollectionEdit";
 import { CollectionNew } from "~/components/Collection/CollectionNew";
 import CollectionDeleteDialog from "~/components/CollectionDeleteDialog";
+import ConfirmationDialog from "~/components/ConfirmationDialog";
 import DynamicCollectionIcon from "~/components/Icons/CollectionIcon";
+import SharePopover from "~/components/Sharing/Collection/SharePopover";
+import { getHeaderExpandedKey } from "~/components/Sidebar/components/Header";
 import { createAction } from "~/actions";
-import { CollectionSection } from "~/actions/sections";
+import { ActiveCollectionSection, CollectionSection } from "~/actions/sections";
+import { setPersistedState } from "~/hooks/usePersistedState";
 import history from "~/utils/history";
+import { newTemplatePath, searchPath } from "~/utils/routeHelpers";
 
 const ColorCollectionIcon = ({ collection }: { collection: Collection }) => (
   <DynamicCollectionIcon collection={collection} />
@@ -65,9 +74,9 @@ export const editCollection = createAction({
   name: ({ t, isContextMenu }) =>
     isContextMenu ? `${t("Edit")}…` : t("Edit collection"),
   analyticsName: "Edit collection",
-  section: CollectionSection,
+  section: ActiveCollectionSection,
   icon: <EditIcon />,
-  visible: ({ stores, activeCollectionId }) =>
+  visible: ({ activeCollectionId }) =>
     !!activeCollectionId &&
     stores.policies.abilities(activeCollectionId).update,
   perform: ({ t, activeCollectionId }) => {
@@ -91,31 +100,65 @@ export const editCollectionPermissions = createAction({
   name: ({ t, isContextMenu }) =>
     isContextMenu ? `${t("Permissions")}…` : t("Collection permissions"),
   analyticsName: "Collection permissions",
-  section: CollectionSection,
+  section: ActiveCollectionSection,
   icon: <PadlockIcon />,
-  visible: ({ stores, activeCollectionId }) =>
+  visible: ({ activeCollectionId }) =>
     !!activeCollectionId &&
     stores.policies.abilities(activeCollectionId).update,
   perform: ({ t, activeCollectionId }) => {
     if (!activeCollectionId) {
       return;
     }
+    const collection = stores.collections.get(activeCollectionId);
+    if (!collection) {
+      return;
+    }
 
     stores.dialogs.openModal({
-      title: t("Collection permissions"),
-      fullscreen: true,
-      content: <CollectionPermissions collectionId={activeCollectionId} />,
+      title: t("Share this collection"),
+      style: { marginBottom: -12 },
+      content: (
+        <SharePopover
+          collection={collection}
+          onRequestClose={stores.dialogs.closeAllModals}
+          visible
+        />
+      ),
     });
+  },
+});
+
+export const searchInCollection = createAction({
+  name: ({ t }) => t("Search in collection"),
+  analyticsName: "Search collection",
+  section: ActiveCollectionSection,
+  icon: <SearchIcon />,
+  visible: ({ activeCollectionId }) => {
+    if (!activeCollectionId) {
+      return false;
+    }
+
+    const collection = stores.collections.get(activeCollectionId);
+
+    if (!collection?.isActive) {
+      return false;
+    }
+
+    return stores.policies.abilities(activeCollectionId).readDocument;
+  },
+
+  perform: ({ activeCollectionId }) => {
+    history.push(searchPath(undefined, { collectionId: activeCollectionId }));
   },
 });
 
 export const starCollection = createAction({
   name: ({ t }) => t("Star"),
   analyticsName: "Star collection",
-  section: CollectionSection,
+  section: ActiveCollectionSection,
   icon: <StarredIcon />,
   keywords: "favorite bookmark",
-  visible: ({ activeCollectionId, stores }) => {
+  visible: ({ activeCollectionId }) => {
     if (!activeCollectionId) {
       return false;
     }
@@ -125,23 +168,24 @@ export const starCollection = createAction({
       stores.policies.abilities(activeCollectionId).star
     );
   },
-  perform: async ({ activeCollectionId, stores }) => {
+  perform: async ({ activeCollectionId }) => {
     if (!activeCollectionId) {
       return;
     }
 
     const collection = stores.collections.get(activeCollectionId);
     await collection?.star();
+    setPersistedState(getHeaderExpandedKey("starred"), true);
   },
 });
 
 export const unstarCollection = createAction({
   name: ({ t }) => t("Unstar"),
   analyticsName: "Unstar collection",
-  section: CollectionSection,
+  section: ActiveCollectionSection,
   icon: <UnstarredIcon />,
   keywords: "unfavorite unbookmark",
-  visible: ({ activeCollectionId, stores }) => {
+  visible: ({ activeCollectionId }) => {
     if (!activeCollectionId) {
       return false;
     }
@@ -151,7 +195,7 @@ export const unstarCollection = createAction({
       stores.policies.abilities(activeCollectionId).unstar
     );
   },
-  perform: async ({ activeCollectionId, stores }) => {
+  perform: async ({ activeCollectionId }) => {
     if (!activeCollectionId) {
       return;
     }
@@ -161,19 +205,85 @@ export const unstarCollection = createAction({
   },
 });
 
+export const archiveCollection = createAction({
+  name: ({ t }) => `${t("Archive")}…`,
+  analyticsName: "Archive collection",
+  section: CollectionSection,
+  icon: <ArchiveIcon />,
+  visible: ({ activeCollectionId, stores }) => {
+    if (!activeCollectionId) {
+      return false;
+    }
+    return !!stores.policies.abilities(activeCollectionId).archive;
+  },
+  perform: async ({ activeCollectionId, stores, t }) => {
+    const { dialogs, collections } = stores;
+    if (!activeCollectionId) {
+      return;
+    }
+    const collection = collections.get(activeCollectionId);
+    if (!collection) {
+      return;
+    }
+
+    dialogs.openModal({
+      title: t("Archive collection"),
+      content: (
+        <ConfirmationDialog
+          onSubmit={async () => {
+            await collection.archive();
+            toast.success(t("Collection archived"));
+          }}
+          submitText={t("Archive")}
+          savingText={`${t("Archiving")}…`}
+        >
+          {t(
+            "Archiving this collection will also archive all documents within it. Documents from the collection will no longer be visible in search results."
+          )}
+        </ConfirmationDialog>
+      ),
+    });
+  },
+});
+
+export const restoreCollection = createAction({
+  name: ({ t }) => t("Restore"),
+  analyticsName: "Restore collection",
+  section: CollectionSection,
+  icon: <RestoreIcon />,
+  visible: ({ activeCollectionId, stores }) => {
+    if (!activeCollectionId) {
+      return false;
+    }
+    return !!stores.policies.abilities(activeCollectionId).restore;
+  },
+  perform: async ({ activeCollectionId, stores, t }) => {
+    if (!activeCollectionId) {
+      return;
+    }
+    const collection = stores.collections.get(activeCollectionId);
+    if (!collection) {
+      return;
+    }
+
+    await collection.restore();
+    toast.success(t("Collection restored"));
+  },
+});
+
 export const deleteCollection = createAction({
   name: ({ t }) => `${t("Delete")}…`,
   analyticsName: "Delete collection",
-  section: CollectionSection,
+  section: ActiveCollectionSection,
   dangerous: true,
   icon: <TrashIcon />,
-  visible: ({ activeCollectionId, stores }) => {
+  visible: ({ activeCollectionId }) => {
     if (!activeCollectionId) {
       return false;
     }
     return stores.policies.abilities(activeCollectionId).delete;
   },
-  perform: ({ activeCollectionId, stores, t }) => {
+  perform: ({ activeCollectionId, t }) => {
     if (!activeCollectionId) {
       return;
     }
@@ -192,6 +302,27 @@ export const deleteCollection = createAction({
         />
       ),
     });
+  },
+});
+
+export const createTemplate = createAction({
+  name: ({ t }) => t("New template"),
+  analyticsName: "New template",
+  section: ActiveCollectionSection,
+  icon: <ShapesIcon />,
+  keywords: "new create template",
+  visible: ({ activeCollectionId }) =>
+    !!(
+      !!activeCollectionId &&
+      stores.policies.abilities(activeCollectionId).createDocument
+    ),
+  perform: ({ activeCollectionId, event }) => {
+    if (!activeCollectionId) {
+      return;
+    }
+    event?.preventDefault();
+    event?.stopPropagation();
+    history.push(newTemplatePath(activeCollectionId));
   },
 });
 

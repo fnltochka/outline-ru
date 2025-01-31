@@ -1,4 +1,5 @@
 import { CollectionPermission } from "@shared/types";
+import { createContext } from "@server/context";
 import { UserMembership, Share } from "@server/models";
 import {
   buildUser,
@@ -67,7 +68,7 @@ describe("#shares.list", () => {
       teamId: user.teamId,
       userId: user.id,
     });
-    await share.revoke(user.id);
+    await share.revoke(createContext({ user }));
     const res = await server.post("/api/shares.list", {
       body: {
         token: user.getJwtToken(),
@@ -111,7 +112,7 @@ describe("#shares.list", () => {
       teamId: user.teamId,
       userId: user.id,
     });
-    await document.delete(user.id);
+    await document.delete(user);
     const res = await server.post("/api/shares.list", {
       body: {
         token: user.getJwtToken(),
@@ -340,7 +341,7 @@ describe("#shares.create", () => {
       teamId: user.teamId,
       userId: user.id,
     });
-    await share.revoke(user.id);
+    await share.revoke(createContext({ user }));
     const res = await server.post("/api/shares.create", {
       body: {
         token: user.getJwtToken(),
@@ -635,7 +636,7 @@ describe("#shares.info", () => {
     expect(body.data.shares[0].published).toBe(true);
     expect(body.data.shares[0].includeChildDocuments).toBe(true);
     expect(body.policies.length).toBe(1);
-    expect(body.policies[0].abilities.update).toBe(true);
+    expect(body.policies[0].abilities.update).toBeTruthy();
   });
   it("should not return share for parent document with includeChildDocuments=false", async () => {
     const team = await buildTeam();
@@ -966,7 +967,7 @@ describe("#shares.revoke", () => {
       teamId: user.teamId,
       userId: user.id,
     });
-    await document.delete(user.id);
+    await document.delete(user);
     const res = await server.post("/api/shares.revoke", {
       body: {
         token: user.getJwtToken(),

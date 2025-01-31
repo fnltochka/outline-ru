@@ -9,7 +9,6 @@ declare module "styled-components" {
     text: string;
     cursor: string;
     divider: string;
-    tableDivider: string;
     tableSelected: string;
     tableSelectedBackground: string;
     quote: string;
@@ -20,6 +19,7 @@ declare module "styled-components" {
     scrollbarThumb: string;
     fontFamily: string;
     fontFamilyMono: string;
+    fontFamilyEmoji: string;
     fontWeightRegular: number;
     fontWeightMedium: number;
     fontWeightBold: number;
@@ -91,6 +91,7 @@ declare module "styled-components" {
       purple: string;
       blue: string;
       marine: string;
+      dusk: string;
       green: string;
       yellow: string;
     };
@@ -120,10 +121,11 @@ declare module "styled-components" {
       Breakpoints,
       EditorTheme {
     background: string;
-    backgroundTransition: string;
+    backgroundSecondary: string;
+    backgroundTertiary: string;
+    backgroundQuaternary: string;
     accent: string;
     accentText: string;
-    secondaryBackground: string;
     link: string;
     text: string;
     cursor: string;
@@ -135,7 +137,6 @@ declare module "styled-components" {
     textDiffDeletedBackground: string;
     placeholder: string;
     commentMarkBackground: string;
-    commentBackground: string;
     sidebarBackground: string;
     sidebarActiveBackground: string;
     sidebarControlHoverBackground: string;
@@ -156,6 +157,7 @@ declare module "styled-components" {
     inputBorderFocused: string;
     listItemHoverBackground: string;
     mentionBackground: string;
+    mentionHoverBackground: string;
     buttonNeutralBackground: string;
     buttonNeutralText: string;
     buttonNeutralBorder: string;

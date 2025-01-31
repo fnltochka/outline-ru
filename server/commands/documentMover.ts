@@ -1,6 +1,6 @@
 import invariant from "invariant";
 import { Transaction } from "sequelize";
-import { ValidationError } from "@server/errors";
+import { createContext } from "@server/context";
 import { traceFunction } from "@server/logging/tracing";
 import {
   User,
@@ -9,8 +9,8 @@ import {
   Pin,
   Event,
   UserMembership,
+  GroupMembership,
 } from "@server/models";
-import pinDestroyer from "./pinDestroyer";
 
 type Props = {
   /** User attempting to move the document */
@@ -58,10 +58,6 @@ async function documentMover({
   }
 
   if (document.template) {
-    if (!document.collectionId) {
-      throw ValidationError("Templates must be in a collection");
-    }
-
     document.collectionId = collectionId;
     document.parentDocumentId = null;
     document.lastModifiedById = user.id;
@@ -217,23 +213,27 @@ async function documentMover({
         lock: Transaction.LOCK.UPDATE,
       });
 
-      if (pin) {
-        await pinDestroyer({
+      await pin?.destroyWithCtx(
+        createContext({
           user,
-          pin,
           ip,
           transaction,
-        });
-      }
+        })
+      );
     }
   }
 
   await document.save({ transaction });
   result.documents.push(document);
 
-  // If there are any sourced permissions for this document, we need to go to the source
-  // permission and recalculate
-  const [documentPermissions, parentDocumentPermissions] = await Promise.all([
+  // If there are any sourced memberships for this document, we need to go to the source
+  // memberships and recalculate the membership for the user or group.
+  const [
+    userMemberships,
+    parentDocumentUserMemberships,
+    groupMemberships,
+    parentDocumentGroupMemberships,
+  ] = await Promise.all([
     UserMembership.findRootMembershipsForDocument(document.id, undefined, {
       transaction,
     }),
@@ -244,10 +244,25 @@ async function documentMover({
           { transaction }
         )
       : [],
+    GroupMembership.findRootMembershipsForDocument(document.id, undefined, {
+      transaction,
+    }),
+    parentDocumentId
+      ? GroupMembership.findRootMembershipsForDocument(
+          parentDocumentId,
+          undefined,
+          { transaction }
+        )
+      : [],
   ]);
 
-  await recalculatePermissions(documentPermissions, transaction);
-  await recalculatePermissions(parentDocumentPermissions, transaction);
+  await recalculateUserMemberships(userMemberships, transaction);
+  await recalculateUserMemberships(parentDocumentUserMemberships, transaction);
+  await recalculateGroupMemberships(groupMemberships, transaction);
+  await recalculateGroupMemberships(
+    parentDocumentGroupMemberships,
+    transaction
+  );
 
   await Event.create(
     {
@@ -272,12 +287,21 @@ async function documentMover({
   return result;
 }
 
-async function recalculatePermissions(
-  permissions: UserMembership[],
+async function recalculateUserMemberships(
+  memberships: UserMembership[],
   transaction?: Transaction
 ) {
-  for (const permission of permissions) {
-    await UserMembership.createSourcedMemberships(permission, { transaction });
+  for (const membership of memberships) {
+    await UserMembership.createSourcedMemberships(membership, { transaction });
+  }
+}
+
+async function recalculateGroupMemberships(
+  memberships: GroupMembership[],
+  transaction?: Transaction
+) {
+  for (const membership of memberships) {
+    await GroupMembership.createSourcedMemberships(membership, { transaction });
   }
 }
 

@@ -1,6 +1,9 @@
 import { Node, Schema } from "prosemirror-model";
 import headingToSlug from "../editor/lib/headingToSlug";
 import textBetween from "../editor/lib/textBetween";
+import { getTextSerializers } from "../editor/lib/textSerializers";
+import { ProsemirrorData } from "../types";
+import { TextHelper } from "./TextHelper";
 
 export type Heading = {
   /* The heading in plain text */
@@ -27,7 +30,59 @@ export type Task = {
   completed: boolean;
 };
 
-export default class ProsemirrorHelper {
+interface User {
+  name: string;
+  language: string | null;
+}
+
+export const attachmentRedirectRegex =
+  /\/api\/attachments\.redirect\?id=(?<id>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+
+export const attachmentPublicRegex =
+  /public\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(?<id>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+
+export class ProsemirrorHelper {
+  /**
+   * Get a new empty document.
+   *
+   * @returns A new empty document as JSON.
+   */
+  static getEmptyDocument(): ProsemirrorData {
+    return {
+      type: "doc",
+      content: [
+        {
+          content: [],
+          type: "paragraph",
+        },
+      ],
+    };
+  }
+
+  /**
+   * Returns true if the data looks like an empty document.
+   *
+   * @param data The ProsemirrorData to check.
+   * @returns True if the document is empty.
+   */
+  static isEmptyData(data: ProsemirrorData): boolean {
+    if (data.type !== "doc") {
+      return false;
+    }
+
+    if (data.content.length === 1) {
+      const node = data.content[0];
+      return (
+        node.type === "paragraph" &&
+        (node.content === null ||
+          node.content === undefined ||
+          node.content.length === 0)
+      );
+    }
+
+    return data.content.length === 0;
+  }
+
   /**
    * Returns the node as plain text.
    *
@@ -36,12 +91,7 @@ export default class ProsemirrorHelper {
    * @returns The document content as plain text without formatting.
    */
   static toPlainText(root: Node, schema: Schema) {
-    const textSerializers = Object.fromEntries(
-      Object.entries(schema.nodes)
-        .filter(([, node]) => node.spec.toPlainText)
-        .map(([name, node]) => [name, node.spec.toPlainText])
-    );
-
+    const textSerializers = getTextSerializers(schema);
     return textBetween(root, 0, root.content.size, textSerializers);
   }
 
@@ -94,8 +144,31 @@ export default class ProsemirrorHelper {
    *
    * @returns True if the editor is empty
    */
-  static isEmpty(doc: Node) {
-    return !doc || doc.textContent.trim() === "";
+  static isEmpty(doc: Node, schema?: Schema) {
+    if (!schema) {
+      return !doc || doc.textContent.trim() === "";
+    }
+
+    const textSerializers = getTextSerializers(schema);
+
+    let empty = true;
+    doc.descendants((child: Node) => {
+      // If we've already found non-empty data, we can stop descending further
+      if (!empty) {
+        return false;
+      }
+
+      const toPlainText = textSerializers[child.type.name];
+      if (toPlainText) {
+        empty = !toPlainText(child).trim();
+      } else if (child.isText) {
+        empty = !child.text?.trim();
+      }
+
+      return empty;
+    });
+
+    return empty;
   }
 
   /**
@@ -121,6 +194,44 @@ export default class ProsemirrorHelper {
     });
 
     return comments;
+  }
+
+  /**
+   * Builds the consolidated anchor text for the given comment-id.
+   *
+   * @param marks all available comment marks in a document.
+   * @param commentId the comment-id to build the anchor text.
+   * @returns consolidated anchor text.
+   */
+  static getAnchorTextForComment(
+    marks: CommentMark[],
+    commentId: string
+  ): string | undefined {
+    const anchorTexts = marks
+      .filter((mark) => mark.id === commentId)
+      .map((mark) => mark.text);
+
+    return anchorTexts.length ? anchorTexts.join("") : undefined;
+  }
+
+  /**
+   * Iterates through the document to find all of the images.
+   *
+   * @param doc Prosemirror document node
+   * @returns Array<Node> of images
+   */
+  static getImages(doc: Node): Node[] {
+    const images: Node[] = [];
+
+    doc.descendants((node) => {
+      if (node.type.name === "image") {
+        images.push(node);
+      }
+
+      return true;
+    });
+
+    return images;
   }
 
   /**
@@ -161,14 +272,30 @@ export default class ProsemirrorHelper {
   }
 
   /**
+   * Returns a summary of total and completed tasks in the node.
+   *
+   * @param doc Prosemirror document node
+   * @returns Object with completed and total keys
+   */
+  static getTasksSummary(doc: Node): { completed: number; total: number } {
+    const tasks = ProsemirrorHelper.getTasks(doc);
+
+    return {
+      completed: tasks.filter((t) => t.completed).length,
+      total: tasks.length,
+    };
+  }
+
+  /**
    * Iterates through the document to find all of the headings and their level.
    *
    * @param doc Prosemirror document node
+   * @param schema Prosemirror schema
    * @returns Array<Heading>
    */
-  static getHeadings(doc: Node) {
+  static getHeadings(doc: Node, schema: Schema) {
     const headings: Heading[] = [];
-    const previouslySeen = {};
+    const previouslySeen: Record<string, number> = {};
 
     doc.forEach((node) => {
       if (node.type.name === "heading") {
@@ -188,12 +315,35 @@ export default class ProsemirrorHelper {
           previouslySeen[id] !== undefined ? previouslySeen[id] + 1 : 1;
 
         headings.push({
-          title: node.textContent,
+          title: ProsemirrorHelper.toPlainText(node, schema),
           level: node.attrs.level,
           id: name,
         });
       }
     });
     return headings;
+  }
+
+  /**
+   * Replaces all template variables in the node.
+   *
+   * @param data The ProsemirrorData object to replace variables in
+   * @param user The user to use for replacing variables
+   * @returns The content with variables replaced
+   */
+  static replaceTemplateVariables(data: ProsemirrorData, user: User) {
+    function replace(node: ProsemirrorData) {
+      if (node.type === "text" && node.text) {
+        node.text = TextHelper.replaceTemplateVariables(node.text, user);
+      }
+
+      if (node.content) {
+        node.content.forEach(replace);
+      }
+
+      return node;
+    }
+
+    return replace(data);
   }
 }

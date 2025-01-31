@@ -1,14 +1,16 @@
 import env from "@server/env";
-import { IncorrectEditionError } from "@server/errors";
 import { User, Team } from "@server/models";
 import Model from "@server/models/base/Model";
 
-export function and(...args: boolean[]) {
-  return args.every(Boolean);
+type Args = boolean | string | Args[];
+
+export function and(...args: Args[]) {
+  const filtered = args.filter(Boolean);
+  return filtered.length === args.length ? filtered : false;
 }
 
-export function or(...args: boolean[]) {
-  return args.some(Boolean);
+export function or(...args: Args[]) {
+  return args.find(Boolean) || false;
 }
 
 /**
@@ -65,7 +67,18 @@ export function isTeamAdmin(
   actor: User,
   model: Model | null | undefined
 ): model is Model {
-  return and(isTeamModel(actor, model), actor.isAdmin);
+  return !!and(isTeamModel(actor, model), actor.isAdmin);
+}
+
+/**
+ * Check if the actor is a member of the team.
+ *
+ * @param actor The actor to check
+ * @param model The model to check
+ * @returns True if the actor is a member of the team the model belongs to
+ */
+export function isTeamMember(actor: User, model: Model | null | undefined) {
+  return !!and(isTeamModel(actor, model), actor.isMember);
 }
 
 /**
@@ -83,9 +96,7 @@ export function isTeamMutable(_actor: User, _model?: Model | null) {
  */
 export function isCloudHosted() {
   if (!env.isCloudHosted) {
-    throw IncorrectEditionError(
-      "Functionality is not available in this edition"
-    );
+    return false;
   }
   return true;
 }

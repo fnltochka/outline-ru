@@ -226,8 +226,7 @@ export default async function userProvisioner({
 
     // If the team settings do not allow this domain,
     // throw an error and fail user creation.
-    const domain = email.split("@")[1];
-    if (team && !(await team.isDomainAllowed(domain))) {
+    if (team && !(await team.isDomainAllowed(email))) {
       throw DomainNotAllowedError();
     }
 

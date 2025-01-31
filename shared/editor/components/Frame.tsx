@@ -7,7 +7,7 @@ import { Optional } from "utility-types";
 import { s } from "../../styles";
 import { sanitizeUrl } from "../../utils/urls";
 
-type Props = Omit<Optional<HTMLIFrameElement>, "children"> & {
+type Props = Omit<Optional<HTMLIFrameElement>, "children" | "style"> & {
   /** The URL to load in the iframe */
   src?: string;
   /** Whether to display a border, defaults to true */
@@ -20,14 +20,10 @@ type Props = Omit<Optional<HTMLIFrameElement>, "children"> & {
   canonicalUrl?: string;
   /** Whether the node is currently selected */
   isSelected?: boolean;
-  /** The width of the frame */
-  width?: string;
-  /** The height of the frame */
-  height?: string;
+  /** Additional styling */
+  style?: React.CSSProperties;
   /** The allow policy of the frame */
   allow?: string;
-  /** Whether to skip sanitization of the `src` prop */
-  dangerouslySkipSanitizeSrc?: boolean;
 };
 
 type PropsWithRef = Props & {
@@ -60,8 +56,7 @@ class Frame extends React.Component<PropsWithRef> {
   render() {
     const {
       border,
-      width = "100%",
-      height = "400px",
+      style = {},
       forwardedRef,
       icon,
       title,
@@ -69,16 +64,14 @@ class Frame extends React.Component<PropsWithRef> {
       isSelected,
       referrerPolicy,
       className = "",
-      dangerouslySkipSanitizeSrc,
       src,
     } = this.props;
-    const withBar = !!(icon || canonicalUrl);
+    const showBottomBar = !!(icon || canonicalUrl);
 
     return (
       <Rounded
-        width={width}
-        height={height}
-        $withBar={withBar}
+        style={style}
+        $showBottomBar={showBottomBar}
         $border={border}
         className={
           isSelected ? `ProseMirror-selectednode ${className}` : className
@@ -87,19 +80,18 @@ class Frame extends React.Component<PropsWithRef> {
         {this.isLoaded && (
           <Iframe
             ref={forwardedRef}
-            $withBar={withBar}
+            $showBottomBar={showBottomBar}
             sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads allow-storage-access-by-user-activation"
-            width={width}
-            height={height}
+            style={style}
             frameBorder="0"
             title="embed"
             loading="lazy"
-            src={dangerouslySkipSanitizeSrc ? src : sanitizeUrl(src)}
+            src={sanitizeUrl(src)}
             referrerPolicy={referrerPolicy}
             allowFullScreen
           />
         )}
-        {withBar && (
+        {showBottomBar && (
           <Bar>
             {icon} <Title>{title}</Title>
             {canonicalUrl && (
@@ -118,23 +110,25 @@ class Frame extends React.Component<PropsWithRef> {
   }
 }
 
-const Iframe = styled.iframe<{ $withBar: boolean }>`
-  border-radius: ${(props) => (props.$withBar ? "3px 3px 0 0" : "3px")};
+const Iframe = styled.iframe<{ $showBottomBar: boolean }>`
+  border-radius: ${(props) => (props.$showBottomBar ? "3px 3px 0 0" : "3px")};
   display: block;
 `;
 
 const Rounded = styled.div<{
-  width: string;
-  height: string;
-  $withBar: boolean;
+  $showBottomBar: boolean;
   $border?: boolean;
 }>`
   border: 1px solid
     ${(props) => (props.$border ? props.theme.embedBorder : "transparent")};
   border-radius: 6px;
   overflow: hidden;
-  width: ${(props) => props.width};
-  height: ${(props) => (props.$withBar ? props.height + 28 : props.height)};
+
+  ${(props) =>
+    props.$showBottomBar &&
+    `
+    padding-bottom: 28px;
+  `}
 `;
 
 const Open = styled.a`
@@ -158,27 +152,15 @@ const Bar = styled.div`
   display: flex;
   align-items: center;
   border-top: 1px solid ${(props) => props.theme.embedBorder};
-  background: ${s("secondaryBackground")};
+  background: ${s("backgroundSecondary")};
   color: ${s("textSecondary")};
   padding: 0 8px;
   border-bottom-left-radius: 6px;
   border-bottom-right-radius: 6px;
   user-select: none;
+  height: 28px;
   position: relative;
 `;
-
-/**
- * Resize observer script that sends a message to the parent window when content is resized. Inject
- * this script into the iframe to receive resize events.
- */
-export const resizeObserverScript = `<script>
-  const resizeObserver = new ResizeObserver((entries) => {
-    for (const entry of entries) {
-      window.parent.postMessage({ "type": "frame-resized", "value": entry.contentRect.height }, '*');
-    }
-  });
-  resizeObserver.observe(document.body);
-</script>`;
 
 export default React.forwardRef<HTMLIFrameElement, Props>((props, ref) => (
   <Frame {...props} forwardedRef={ref} />

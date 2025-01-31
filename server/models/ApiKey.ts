@@ -1,5 +1,8 @@
+import crypto from "crypto";
+import { Matches } from "class-validator";
+import { subMinutes } from "date-fns";
 import randomstring from "randomstring";
-import { InferAttributes, InferCreationAttributes } from "sequelize";
+import { InferAttributes, InferCreationAttributes, Op } from "sequelize";
 import {
   Column,
   Table,
@@ -7,9 +10,15 @@ import {
   BeforeValidate,
   BelongsTo,
   ForeignKey,
+  IsDate,
+  DataType,
+  AfterFind,
+  BeforeSave,
 } from "sequelize-typescript";
+import { ApiKeyValidation } from "@shared/validations";
 import User from "./User";
 import ParanoidModel from "./base/ParanoidModel";
+import { SkipChangeset } from "./decorators/Changeset";
 import Fix from "./decorators/Fix";
 import Length from "./validators/Length";
 
@@ -21,25 +30,92 @@ class ApiKey extends ParanoidModel<
 > {
   static prefix = "ol_api_";
 
+  static eventNamespace = "api_keys";
+
+  /** The human-readable name of this API key */
   @Length({
-    min: 3,
-    max: 255,
-    msg: "Name must be between 3 and 255 characters",
+    min: ApiKeyValidation.minNameLength,
+    max: ApiKeyValidation.maxNameLength,
+    msg: `Name must be between ${ApiKeyValidation.minNameLength} and ${ApiKeyValidation.maxNameLength} characters`,
   })
   @Column
   name: string;
 
+  /** A space-separated list of scopes that this API key has access to */
+  @Matches(/[\/\.\w\s]*/, {
+    each: true,
+  })
+  @Column(DataType.ARRAY(DataType.STRING))
+  scope: string[] | null;
+
+  /** @deprecated The plain text value of the API key, removed soon. */
   @Unique
   @Column
   secret: string;
 
+  /** The cached plain text value. Only available when creating the API key */
+  @Column(DataType.VIRTUAL)
+  value: string | null;
+
+  /** The hashed value of the API key */
+  @Unique
+  @Column
+  @SkipChangeset
+  hash: string;
+
+  /** The last 4 characters of the API key */
+  @Column
+  @SkipChangeset
+  last4: string;
+
+  /** The date and time when this API key will expire */
+  @IsDate
+  @Column
+  expiresAt: Date | null;
+
+  /** The date and time when this API key was last used */
+  @IsDate
+  @Column
+  @SkipChangeset
+  lastActiveAt: Date | null;
+
   // hooks
 
-  @BeforeValidate
-  static async generateSecret(model: ApiKey) {
-    if (!model.secret) {
-      model.secret = `${ApiKey.prefix}${randomstring.generate(38)}`;
+  @AfterFind
+  public static async afterFindHook(models: ApiKey | ApiKey[]) {
+    const modelsArray = Array.isArray(models) ? models : [models];
+    for (const model of modelsArray) {
+      if (model?.secret) {
+        model.last4 = model.secret.slice(-4);
+      }
     }
+  }
+
+  @BeforeValidate
+  public static async generateSecret(model: ApiKey) {
+    if (!model.hash) {
+      const secret = `${ApiKey.prefix}${randomstring.generate(38)}`;
+      model.value = model.secret || secret;
+      model.hash = this.hash(model.value);
+    }
+  }
+
+  @BeforeSave
+  public static async updateLast4(model: ApiKey) {
+    const value = model.value || model.secret;
+    if (value) {
+      model.last4 = value.slice(-4);
+    }
+  }
+
+  /**
+   * Generates a hashed API key for the given input key.
+   *
+   * @param key The input string to hash
+   * @returns The hashed API key
+   */
+  public static hash(key: string) {
+    return crypto.createHash("sha256").update(key).digest("hex");
   }
 
   /**
@@ -49,8 +125,24 @@ class ApiKey extends ParanoidModel<
    * @param text The text to validate
    * @returns True if likely an API key
    */
-  static match(text: string) {
+  public static match(text: string) {
+    // cannot guarantee prefix here as older keys do not include it.
     return !!text.replace(ApiKey.prefix, "").match(/^[\w]{38}$/);
+  }
+
+  /**
+   * Finds an API key by the given input string. This will check both the
+   * secret and hash fields.
+   *
+   * @param input The input string to search for
+   * @returns The API key if found
+   */
+  public static findByToken(input: string) {
+    return this.findOne({
+      where: {
+        [Op.or]: [{ secret: input }, { hash: this.hash(input) }],
+      },
+    });
   }
 
   // associations
@@ -61,6 +153,41 @@ class ApiKey extends ParanoidModel<
   @ForeignKey(() => User)
   @Column
   userId: string;
+
+  // methods
+
+  updateActiveAt = async () => {
+    const fiveMinutesAgo = subMinutes(new Date(), 5);
+
+    // ensure this is updated only every few minutes otherwise
+    // we'll be constantly writing to the DB as API requests happen
+    if (!this.lastActiveAt || this.lastActiveAt < fiveMinutesAgo) {
+      this.lastActiveAt = new Date();
+    }
+
+    return this.save({ silent: true });
+  };
+
+  /** Checks if the API key has access to the given path */
+  canAccess = (path: string) => {
+    if (!this.scope) {
+      return true;
+    }
+
+    const resource = path.split("/").pop() ?? "";
+    const [namespace, method] = resource.split(".");
+
+    return this.scope.some((scope) => {
+      const [scopeNamespace, scopeMethod] = scope
+        .replace("/api/", "")
+        .split(".");
+      return (
+        scope.startsWith("/api/") &&
+        (namespace === scopeNamespace || scopeNamespace === "*") &&
+        (method === scopeMethod || scopeMethod === "*")
+      );
+    });
+  };
 }
 
 export default ApiKey;

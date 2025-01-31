@@ -59,7 +59,7 @@ export default abstract class ExportTask extends BaseTask<Props> {
         );
 
         if (
-          fileOperation.includeAttachments &&
+          fileOperation.options?.includeAttachments &&
           env.MAXIMUM_EXPORT_SIZE &&
           totalAttachmentsSize > env.MAXIMUM_EXPORT_SIZE
         ) {
@@ -74,7 +74,7 @@ export default abstract class ExportTask extends BaseTask<Props> {
       }
 
       Logger.info("task", `ExportTask processing data for ${fileOperationId}`, {
-        includeAttachments: fileOperation.includeAttachments,
+        options: fileOperation.options,
       });
 
       await this.updateFileOperation(fileOperation, {
@@ -157,12 +157,17 @@ export default abstract class ExportTask extends BaseTask<Props> {
     fileOperation: FileOperation,
     options: Partial<FileOperation> & { error?: Error }
   ) {
-    await fileOperation.update({
-      ...options,
-      error: options.error
-        ? truncate(options.error.message, { length: 255 })
-        : undefined,
-    });
+    await fileOperation.update(
+      {
+        ...options,
+        error: options.error
+          ? truncate(options.error.message, { length: 255 })
+          : undefined,
+      },
+      {
+        hooks: false,
+      }
+    );
 
     await Event.schedule({
       name: "fileOperations.update",

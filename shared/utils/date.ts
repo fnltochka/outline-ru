@@ -1,5 +1,6 @@
 /* eslint-disable import/no-duplicates */
 import {
+  Locale,
   addSeconds,
   formatDistanceToNow,
   subDays,
@@ -17,11 +18,12 @@ import {
   it,
   ja,
   ko,
+  nb,
   nl,
   ptBR,
   pt,
   pl,
-  ru,
+  sv,
   tr,
   vi,
   uk,
@@ -168,11 +170,12 @@ const locales = {
   it_IT: it,
   ja_JP: ja,
   ko_KR: ko,
+  nb_NO: nb,
   nl_NL: nl,
   pt_BR: ptBR,
   pt_PT: pt,
   pl_PL: pl,
-  ru_RU: ru,
+  sv_SE: sv,
   tr_TR: tr,
   uk_UA: uk,
   vi_VN: vi,
@@ -186,7 +189,7 @@ const locales = {
  * @param language The user language
  * @returns The date-fns locale.
  */
-export function dateLocale(language: string | null | undefined) {
+export function dateLocale(language: keyof typeof locales | undefined | null) {
   return language ? locales[language] : undefined;
 }
 

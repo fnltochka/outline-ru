@@ -63,7 +63,7 @@ router.post(
       data: {
         memberships: memberships.map(presentMembership),
         documents: await Promise.all(
-          documents.map((document: Document) => presentDocument(document))
+          documents.map((document: Document) => presentDocument(ctx, document))
         ),
       },
       policies,
@@ -83,6 +83,7 @@ router.post(
     const { user } = ctx.state.auth;
     const membership = await UserMembership.findByPk(id, {
       transaction,
+      lock: transaction.LOCK.UPDATE,
       rejectOnEmpty: true,
     });
     authorize(user, "update", membership);
@@ -90,21 +91,15 @@ router.post(
     membership.index = index;
     await membership.save({ transaction });
 
-    await Event.create(
-      {
-        name: "userMemberships.update",
-        modelId: membership.id,
-        userId: membership.userId,
-        teamId: user.teamId,
-        actorId: user.id,
-        documentId: membership.documentId,
-        ip: ctx.request.ip,
-        data: {
-          index: membership.index,
-        },
+    await Event.createFromContext(ctx, {
+      name: "userMemberships.update",
+      modelId: membership.id,
+      userId: membership.userId,
+      documentId: membership.documentId,
+      data: {
+        index: membership.index,
       },
-      { transaction }
-    );
+    });
 
     ctx.body = {
       data: presentMembership(membership),

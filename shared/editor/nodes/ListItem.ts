@@ -14,9 +14,9 @@ import {
 import { DecorationSet, Decoration } from "prosemirror-view";
 import { MarkdownSerializerState } from "../lib/markdown/serializer";
 import { findParentNodeClosestToPos } from "../queries/findParentNode";
-import getParentListItem from "../queries/getParentListItem";
-import isInList from "../queries/isInList";
-import isList from "../queries/isList";
+import { getParentListItem } from "../queries/getParentListItem";
+import { isInList } from "../queries/isInList";
+import { isList } from "../queries/isList";
 import Node from "./Node";
 
 export default class ListItem extends Node {
@@ -140,6 +140,9 @@ export default class ListItem extends Node {
           },
           handleDOMEvents: {
             mouseover: (view, event) => {
+              if (!view.editable) {
+                return false;
+              }
               const { state, dispatch } = view;
               const target = event.target as HTMLElement;
               const li = target?.closest("li");
@@ -164,6 +167,9 @@ export default class ListItem extends Node {
               return false;
             },
             mouseout: (view, event) => {
+              if (!view.editable) {
+                return false;
+              }
               const { state, dispatch } = view;
               const target = event.target as HTMLElement;
               const li = target?.closest("li");

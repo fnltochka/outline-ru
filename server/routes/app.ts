@@ -52,7 +52,9 @@ export const renderApp = async (
     canonical?: string;
     shortcutIcon?: string;
     rootShareId?: string;
-    analytics?: Integration | null;
+    isShare?: boolean;
+    analytics?: Integration<IntegrationType.Analytics>[];
+    allowIndexing?: boolean;
   } = {}
 ) => {
   const {
@@ -60,19 +62,40 @@ export const renderApp = async (
     description = "A modern team knowledge base for your internal documentation, product specs, support answers, meeting notes, onboarding, &amp; more…",
     canonical = "",
     shortcutIcon = `${env.CDN_URL || ""}/images/favicon-32.png`,
+    allowIndexing = true,
   } = options;
 
   if (ctx.request.path === "/realtime/") {
     return next();
   }
 
+  if (!env.isCloudHosted) {
+    options.analytics?.forEach((integration) => {
+      if (integration.settings?.instanceUrl) {
+        const parsed = new URL(integration.settings?.instanceUrl);
+        const csp = ctx.response.get("Content-Security-Policy");
+        ctx.set(
+          "Content-Security-Policy",
+          csp.replace("script-src", `script-src ${parsed.hostname}`)
+        );
+      }
+    });
+  }
+
   const { shareId } = ctx.params;
   const page = await readIndexFile();
   const environment = `
     <script nonce="${ctx.state.cspNonce}">
-      window.env = ${JSON.stringify(presentEnv(env, options))};
+      window.env = ${JSON.stringify(presentEnv(env, options)).replace(
+        /</g,
+        "\\u003c"
+      )};
     </script>
   `;
+
+  const noIndexTag = allowIndexing
+    ? ""
+    : '<meta name="robots" content="noindex, nofollow">';
 
   const scriptTags = env.isProduction
     ? `<script type="module" nonce="${ctx.state.cspNonce}" src="${
@@ -95,11 +118,16 @@ export const renderApp = async (
     .replace(/\{lang\}/g, unicodeCLDRtoISO639(env.DEFAULT_LANGUAGE))
     .replace(/\{title\}/g, escape(title))
     .replace(/\{description\}/g, escape(description))
+    .replace(/\{noindex\}/g, noIndexTag)
+    .replace(
+      /\{manifest-url\}/g,
+      options.isShare ? "" : "/static/manifest.webmanifest"
+    )
     .replace(/\{canonical-url\}/g, canonical)
-    .replace(/\{shortcut-icon\}/g, shortcutIcon)
+    .replace(/\{shortcut-icon-url\}/g, shortcutIcon)
+    .replace(/\{cdn-url\}/g, env.CDN_URL || "")
     .replace(/\{prefetch\}/g, shareId ? "" : prefetchTags)
     .replace(/\{slack-app-id\}/g, env.public.SLACK_APP_ID || "")
-    .replace(/\{cdn-url\}/g, env.CDN_URL || "")
     .replace(/\{script-tags\}/g, scriptTags)
     .replace(/\{csp-nonce\}/g, ctx.state.cspNonce);
 };
@@ -110,9 +138,10 @@ export const renderShare = async (ctx: Context, next: Next) => {
   const documentSlug = ctx.params.documentSlug;
 
   // Find the share record if publicly published so that the document title
-  // can be be returned in the server-rendered HTML. This allows it to appear in
-  // unfurls with more reliablity
-  let share, document, team, analytics;
+  // can be returned in the server-rendered HTML. This allows it to appear in
+  // unfurls with more reliability
+  let share, document, team;
+  let analytics: Integration<IntegrationType.Analytics>[] = [];
 
   try {
     team = await getTeamFromContext(ctx);
@@ -131,7 +160,7 @@ export const renderShare = async (ctx: Context, next: Next) => {
     }
     document = result.document;
 
-    analytics = await Integration.findOne({
+    analytics = await Integration.findAll({
       where: {
         teamId: document.teamId,
         type: IntegrationType.Analytics,
@@ -139,10 +168,15 @@ export const renderShare = async (ctx: Context, next: Next) => {
     });
 
     if (share && !ctx.userAgent.isBot) {
-      await share.update({
-        lastAccessedAt: new Date(),
-        views: Sequelize.literal("views + 1"),
-      });
+      await share.update(
+        {
+          lastAccessedAt: new Date(),
+          views: Sequelize.literal("views + 1"),
+        },
+        {
+          hooks: false,
+        }
+      );
     }
   } catch (err) {
     // If the share or document does not exist, return a 404.
@@ -161,9 +195,11 @@ export const renderShare = async (ctx: Context, next: Next) => {
         ? team.avatarUrl
         : undefined,
     analytics,
+    isShare: true,
     rootShareId,
     canonical: share
       ? `${share.canonicalUrl}${documentSlug && document ? document.url : ""}`
       : undefined,
+    allowIndexing: share?.allowIndexing,
   });
 };

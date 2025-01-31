@@ -18,10 +18,13 @@ class AzurePluginEnvironment extends Environment {
   );
 
   @IsOptional()
+  public AZURE_RESOURCE_APP_ID =
+    this.toOptionalString(environment.AZURE_RESOURCE_APP_ID) ??
+    "00000003-0000-0000-c000-000000000000";
+
+  @IsOptional()
   @CannotUseWithout("AZURE_CLIENT_ID")
-  public AZURE_RESOURCE_APP_ID = this.toOptionalString(
-    environment.AZURE_RESOURCE_APP_ID
-  );
+  public AZURE_TENANT_ID = this.toOptionalString(environment.AZURE_TENANT_ID);
 }
 
 export default new AzurePluginEnvironment();

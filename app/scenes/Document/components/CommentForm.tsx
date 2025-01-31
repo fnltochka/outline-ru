@@ -12,7 +12,7 @@ import { ProsemirrorData } from "@shared/types";
 import { getEventFiles } from "@shared/utils/files";
 import { AttachmentValidation, CommentValidation } from "@shared/validations";
 import Comment from "~/models/Comment";
-import Avatar from "~/components/Avatar";
+import { Avatar } from "~/components/Avatar";
 import ButtonSmall from "~/components/ButtonSmall";
 import { useDocumentContext } from "~/components/DocumentContext";
 import Flex from "~/components/Flex";
@@ -24,8 +24,11 @@ import useOnClickOutside from "~/hooks/useOnClickOutside";
 import useStores from "~/hooks/useStores";
 import CommentEditor from "./CommentEditor";
 import { Bubble } from "./CommentThreadItem";
+import { HighlightedText } from "./HighlightText";
 
 type Props = {
+  /** Callback when the form is submitted. */
+  onSubmit?: () => void;
   /** Callback when the draft should be saved. */
   onSaveDraft: (data: ProsemirrorData | undefined) => void;
   /** A draft comment for this thread. */
@@ -42,10 +45,10 @@ type Props = {
   standalone?: boolean;
   /** Whether to animate the comment form in and out */
   animatePresence?: boolean;
+  /** Text to highlight at the top of the comment */
+  highlightedText?: string;
   /** The text direction of the editor */
   dir?: "rtl" | "ltr";
-  /** Callback when the user is typing in the editor */
-  onTyping?: () => void;
   /** Callback when the editor is focused */
   onFocus?: () => void;
   /** Callback when the editor is blurred */
@@ -56,14 +59,15 @@ function CommentForm({
   documentId,
   thread,
   draft,
+  onSubmit,
   onSaveDraft,
-  onTyping,
   onFocus,
   onBlur,
   autoFocus,
   standalone,
   placeholder,
   animatePresence,
+  highlightedText,
   dir,
   ...rest
 }: Props) {
@@ -102,8 +106,10 @@ function CommentForm({
       thread ??
       new Comment(
         {
+          createdAt: new Date().toISOString(),
           documentId,
           data: draft,
+          reactions: [],
         },
         comments
       );
@@ -113,6 +119,7 @@ function CommentForm({
         documentId,
         data: draft,
       })
+      .then(() => onSubmit?.())
       .catch(() => {
         comment.isNew = true;
         toast.error(t("Error creating comment"));
@@ -135,9 +142,11 @@ function CommentForm({
 
     const comment = new Comment(
       {
+        createdAt: new Date().toISOString(),
         parentCommentId: thread?.id,
         documentId,
         data: draft,
+        reactions: [],
       },
       comments
     );
@@ -145,11 +154,14 @@ function CommentForm({
     comment.id = uuidv4();
     comments.add(comment);
 
-    comment.save().catch(() => {
-      comments.remove(comment.id);
-      comment.isNew = true;
-      toast.error(t("Error creating comment"));
-    });
+    comment
+      .save()
+      .then(() => onSubmit?.())
+      .catch(() => {
+        comments.remove(comment.id);
+        comment.isNew = true;
+        toast.error(t("Error creating comment"));
+      });
 
     // optimistically update the comment model
     comment.isNew = false;
@@ -167,7 +179,6 @@ function CommentForm({
   ) => {
     const text = value(true, true);
     onSaveDraft(text ? value(false, true) : undefined);
-    onTyping?.();
   };
 
   const handleSave = () => {
@@ -274,6 +285,9 @@ function CommentForm({
           $firstOfThread={standalone}
           column
         >
+          {highlightedText && (
+            <HighlightedText>{highlightedText}</HighlightedText>
+          )}
           <CommentEditor
             key={`${forceRender}`}
             ref={editorRef}
@@ -302,7 +316,7 @@ function CommentForm({
                   {t("Cancel")}
                 </ButtonSmall>
               </Flex>
-              <Tooltip delay={500} content={t("Upload image")} placement="top">
+              <Tooltip content={t("Upload image")} placement="top">
                 <NudeButton onClick={handleImageUpload}>
                   <ImageIcon color={theme.textTertiary} />
                 </NudeButton>

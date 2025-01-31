@@ -16,7 +16,15 @@ export const AttachmentValidation = {
     "image/svg+xml",
     "image/bmp",
     "image/tiff",
+    "image/heic",
   ],
+};
+
+export const ApiKeyValidation = {
+  /** The minimum length of the API key name */
+  minNameLength: 3,
+  /** The maximum length of the API key name */
+  maxNameLength: 255,
 };
 
 export const CollectionValidation = {

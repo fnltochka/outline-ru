@@ -11,9 +11,13 @@ type Props = {
   /** Whether the text should be selectable (defaults to false) */
   selectable?: boolean;
   /** The font weight of the text */
-  weight?: "bold" | "normal";
+  weight?: "xbold" | "bold" | "normal";
+  /** Whether the text should be italic */
+  italic?: boolean;
   /** Whether the text should be truncated with an ellipsis */
   ellipsis?: boolean;
+  /** Whether the text should be monospaced */
+  monospace?: boolean;
 };
 
 /**
@@ -47,12 +51,18 @@ const Text = styled.span<Props>`
   ${(props) =>
     props.weight &&
     css`
-      font-weight: ${props.weight === "bold"
+      font-weight: ${props.weight === "xbold"
+        ? 600
+        : props.weight === "bold"
         ? 500
         : props.weight === "normal"
         ? 400
         : "inherit"};
     `}
+
+  font-style: ${(props) => (props.italic ? "italic" : "normal")};
+  font-family: ${(props) =>
+    props.monospace ? props.theme.fontFamilyMono : "inherit"};
 
   white-space: normal;
   user-select: ${(props) => (props.selectable ? "text" : "none")};

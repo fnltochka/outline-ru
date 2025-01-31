@@ -1,6 +1,7 @@
 import escapeRegExp from "lodash/escapeRegExp";
 import env from "../env";
-import { RESERVED_SUBDOMAINS, getBaseDomain, parseDomain } from "./domains";
+import { isBrowser } from "./browser";
+import { parseDomain } from "./domains";
 
 /**
  * Prepends the CDN url to the given path (If a CDN is configured).
@@ -10,6 +11,21 @@ import { RESERVED_SUBDOMAINS, getBaseDomain, parseDomain } from "./domains";
  */
 export function cdnPath(path: string): string {
   return `${env.CDN_URL ?? ""}${path}`;
+}
+
+/**
+ * Extracts the file name from a given url.
+ *
+ * @param url The url to extract the file name from.
+ * @returns The file name.
+ */
+export function fileNameFromUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.split("/").pop();
+  } catch (err) {
+    return;
+  }
 }
 
 /**
@@ -29,16 +45,16 @@ export function isInternalUrl(href: string) {
     return true;
   }
 
-  const outline =
-    typeof window !== "undefined"
-      ? parseDomain(window.location.href)
-      : parseDomain(env.URL);
+  const outline = isBrowser
+    ? parseDomain(window.location.href)
+    : parseDomain(env.URL);
   const domain = parseDomain(href);
 
   return (
-    outline.host === domain.host ||
-    (domain.host.endsWith(getBaseDomain()) &&
-      !RESERVED_SUBDOMAINS.find((reserved) => domain.host.startsWith(reserved)))
+    (outline.host === domain.host && outline.port === domain.port) ||
+    (isBrowser &&
+      window.location.hostname === domain.host &&
+      window.location.port === domain.port)
   );
 }
 
@@ -50,7 +66,7 @@ export function isInternalUrl(href: string) {
  */
 export function isDocumentUrl(url: string) {
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(url, env.URL);
     return (
       isInternalUrl(url) &&
       (parsed.pathname.startsWith("/doc/") || parsed.pathname.startsWith("/d/"))
@@ -105,7 +121,12 @@ export const creatingUrlPrefix = "creating#";
  * @returns True if the url is external, false otherwise.
  */
 export function isExternalUrl(url: string) {
-  return !!url && !isInternalUrl(url) && !url.startsWith(creatingUrlPrefix);
+  return (
+    !!url &&
+    !isInternalUrl(url) &&
+    !url.startsWith(creatingUrlPrefix) &&
+    (!env.CDN_URL || !url.startsWith(env.CDN_URL))
+  );
 }
 
 /**
@@ -145,6 +166,12 @@ export function sanitizeUrl(url: string | null | undefined) {
   return url;
 }
 
+/**
+ * Returns a regex to match the given url.
+ *
+ * @param url The url to create a regex for.
+ * @returns A regex to match the url.
+ */
 export function urlRegex(url: string | null | undefined): RegExp | undefined {
   if (!url || !isUrl(url)) {
     return undefined;
@@ -153,4 +180,14 @@ export function urlRegex(url: string | null | undefined): RegExp | undefined {
   const urlObj = new URL(sanitizeUrl(url) as string);
 
   return new RegExp(escapeRegExp(`${urlObj.protocol}//${urlObj.host}`));
+}
+
+/**
+ * Extracts LIKELY urls from the given text, note this does not validate the urls.
+ *
+ * @param text The text to extract urls from.
+ * @returns An array of likely urls.
+ */
+export function getUrls(text: string) {
+  return Array.from(text.match(/(?:https?):\/\/[^\s]+/gi) || []);
 }

@@ -7,13 +7,16 @@ import {
   DocumentPermission,
 } from "@shared/types";
 import RootStore from "~/stores/RootStore";
+import { SidebarContextType } from "./components/Sidebar/components/SidebarContext";
 import Document from "./models/Document";
 import FileOperation from "./models/FileOperation";
 import Pin from "./models/Pin";
 import Star from "./models/Star";
+import User from "./models/User";
 import UserMembership from "./models/UserMembership";
 
-export type PartialWithId<T> = Partial<T> & { id: string };
+export type PartialExcept<T, K extends keyof T> = Partial<Omit<T, K>> &
+  Required<Pick<T, K>>;
 
 export type MenuItemButton = {
   type: "button";
@@ -23,7 +26,7 @@ export type MenuItemButton = {
   visible?: boolean;
   selected?: boolean;
   disabled?: boolean;
-  icon?: React.ReactElement;
+  icon?: React.ReactNode;
 };
 
 export type MenuItemWithChildren = {
@@ -35,7 +38,7 @@ export type MenuItemWithChildren = {
   hover?: boolean;
 
   items: MenuItem[];
-  icon?: React.ReactElement;
+  icon?: React.ReactNode;
 };
 
 export type MenuSeparator = {
@@ -56,7 +59,7 @@ export type MenuInternalLink = {
   visible?: boolean;
   selected?: boolean;
   disabled?: boolean;
-  icon?: React.ReactElement;
+  icon?: React.ReactNode;
 };
 
 export type MenuExternalLink = {
@@ -67,7 +70,7 @@ export type MenuExternalLink = {
   selected?: boolean;
   disabled?: boolean;
   level?: number;
-  icon?: React.ReactElement;
+  icon?: React.ReactNode;
 };
 
 export type MenuItem =
@@ -82,8 +85,8 @@ export type ActionContext = {
   isContextMenu: boolean;
   isCommandBar: boolean;
   isButton: boolean;
-  inStarredSection?: boolean;
-  activeCollectionId?: string | null;
+  sidebarContext?: SidebarContextType;
+  activeCollectionId?: string | undefined;
   activeDocumentId: string | undefined;
   currentUserId: string | undefined;
   currentTeamId: string | undefined;
@@ -102,8 +105,10 @@ export type Action = {
   shortcut?: string[];
   keywords?: string;
   dangerous?: boolean;
+  /** Higher number is higher in results, default is 0. */
+  priority?: number;
   iconInContextMenu?: boolean;
-  icon?: React.ReactElement | React.FC;
+  icon?: React.ReactNode;
   placeholder?: ((context: ActionContext) => string) | string;
   selected?: (context: ActionContext) => boolean;
   visible?: (context: ActionContext) => boolean;
@@ -122,7 +127,7 @@ export type CommandBarAction = {
   shortcut: string[];
   keywords: string;
   placeholder?: string;
-  icon?: React.ReactElement;
+  icon?: React.ReactNode;
   perform?: () => void;
   children?: string[];
   parent?: string;
@@ -137,15 +142,6 @@ export type FetchOptions = {
   revisionId?: string;
   shareId?: string;
   force?: boolean;
-};
-
-export type NavigationNode = {
-  id: string;
-  title: string;
-  emoji?: string | null;
-  url: string;
-  children: NavigationNode[];
-  isDraft?: boolean;
 };
 
 export type CollectionSort = {
@@ -171,7 +167,7 @@ export type PaginationParams = {
 export type SearchResult = {
   id: string;
   ranking: number;
-  context: string;
+  context?: string;
   document: Document;
 };
 
@@ -180,6 +176,7 @@ export type WebsocketEntityDeletedEvent = {
 };
 
 export type WebsocketEntitiesEvent = {
+  fetchIfMissing?: boolean;
   documentIds: { id: string; updatedAt?: string }[];
   collectionIds: { id: string; updatedAt?: string }[];
   groupIds: { id: string; updatedAt?: string }[];
@@ -187,30 +184,26 @@ export type WebsocketEntitiesEvent = {
   event: string;
 };
 
-export type WebsocketCollectionUserEvent = {
-  collectionId: string;
-  userId: string;
-};
-
-export type WebsocketDocumentUserEvent = {
-  documentId: string;
-  userId: string;
-};
-
 export type WebsocketCollectionUpdateIndexEvent = {
   collectionId: string;
   index: string;
 };
 
+export type WebsocketCommentReactionEvent = {
+  emoji: string;
+  commentId: string;
+  user: User;
+};
+
 export type WebsocketEvent =
-  | PartialWithId<Pin>
-  | PartialWithId<Star>
-  | PartialWithId<FileOperation>
-  | PartialWithId<UserMembership>
-  | WebsocketCollectionUserEvent
+  | PartialExcept<Pin, "id">
+  | PartialExcept<Star, "id">
+  | PartialExcept<FileOperation, "id">
+  | PartialExcept<UserMembership, "id">
   | WebsocketCollectionUpdateIndexEvent
   | WebsocketEntityDeletedEvent
-  | WebsocketEntitiesEvent;
+  | WebsocketEntitiesEvent
+  | WebsocketCommentReactionEvent;
 
 export type AwarenessChangeEvent = {
   states: { user?: { id: string }; cursor: any; scrollY: number | undefined }[];
@@ -221,6 +214,7 @@ export const EmptySelectValue = "__empty__";
 export type Permission = {
   label: string;
   value: CollectionPermission | DocumentPermission | typeof EmptySelectValue;
+  divider?: boolean;
 };
 
 // TODO: Can we make this type driven by the @Field decorator
@@ -229,3 +223,12 @@ export type Properties<C> = {
     ? Property
     : never]?: C[Property];
 };
+
+export enum CommentSortType {
+  MostRecent = "mostRecent",
+  OrderInDocument = "orderInDocument",
+}
+
+export type CommentSortOption =
+  | { type: CommentSortType.MostRecent }
+  | { type: CommentSortType.OrderInDocument; referencedCommentIds: string[] };

@@ -1,4 +1,4 @@
-import Token from "markdown-it/lib/token";
+import { Token } from "markdown-it";
 import { InputRule } from "prosemirror-inputrules";
 import { Node as ProsemirrorNode, NodeSpec, NodeType } from "prosemirror-model";
 import {
@@ -79,6 +79,7 @@ export default class Image extends SimpleImage {
       attrs: {
         src: {
           default: "",
+          validate: "string",
         },
         width: {
           default: undefined,
@@ -88,12 +89,15 @@ export default class Image extends SimpleImage {
         },
         alt: {
           default: null,
+          validate: "string|null",
         },
         layoutClass: {
           default: null,
+          validate: "string|null",
         },
         title: {
           default: null,
+          validate: "string|null",
         },
       },
       content: "text*",
@@ -166,6 +170,8 @@ export default class Image extends SimpleImage {
           ["p", { class: "caption" }, 0],
         ];
       },
+      toPlainText: (node) =>
+        node.attrs.alt ? `(image: ${node.attrs.alt})` : "(image)",
     };
   }
 
@@ -286,6 +292,7 @@ export default class Image extends SimpleImage {
       onChangeSize={this.handleChangeSize(props)}
     >
       <Caption
+        width={props.node.attrs.width}
         onBlur={this.handleCaptionBlur(props)}
         onKeyDown={this.handleCaptionKeyDown(props)}
         isSelected={props.isSelected}
@@ -297,8 +304,12 @@ export default class Image extends SimpleImage {
   );
 
   toMarkdown(state: MarkdownSerializerState, node: ProsemirrorNode) {
-    let markdown =
-      " ![" +
+    // Skip the preceding space for images at the start of a list item or Markdown parsers may
+    // render them as code blocks
+    let markdown = state.inList ? "" : " ";
+
+    markdown +=
+      "![" +
       state.esc((node.attrs.alt || "").replace("\n", "") || "", false) +
       "](" +
       state.esc(node.attrs.src || "", false);

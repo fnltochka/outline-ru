@@ -6,13 +6,14 @@ export default function useDictionary() {
 
   return React.useMemo(
     () => ({
-      addColumnAfter: t("Insert after"),
-      addColumnBefore: t("Insert before"),
-      addRowAfter: t("Insert after"),
-      addRowBefore: t("Insert before"),
+      addColumnAfter: t("Add column after"),
+      addColumnBefore: t("Add column before"),
+      addRowAfter: t("Add row after"),
+      addRowBefore: t("Add row before"),
       alignCenter: t("Align center"),
       alignLeft: t("Align left"),
       alignRight: t("Align right"),
+      alignDefaultWidth: t("Default width"),
       alignFullWidth: t("Full width"),
       bulletList: t("Bulleted list"),
       checkboxList: t("Todo list"),
@@ -38,10 +39,11 @@ export default function useDictionary() {
       em: t("Italic"),
       embedInvalidLink: t("Sorry, that link won’t work for this embed type"),
       file: t("File attachment"),
-      findOrCreateDoc: `${t("Find or create a doc")}…`,
+      enterLink: `${t("Enter a link")}…`,
       h1: t("Big heading"),
       h2: t("Medium heading"),
       h3: t("Small heading"),
+      h4: t("Extra small heading"),
       heading: t("Heading"),
       hr: t("Divider"),
       image: t("Image"),
@@ -75,6 +77,8 @@ export default function useDictionary() {
       sortAsc: t("Sort ascending"),
       sortDesc: t("Sort descending"),
       table: t("Table"),
+      exportAsCSV: t("Export as CSV"),
+      toggleHeader: t("Toggle header"),
       mathInline: t("Math inline (LaTeX)"),
       mathBlock: t("Math block (LaTeX)"),
       tip: t("Tip"),
@@ -90,6 +94,7 @@ export default function useDictionary() {
       outdent: t("Outdent"),
       video: t("Video"),
       untitled: t("Untitled"),
+      none: t("None"),
     }),
     [t]
   );

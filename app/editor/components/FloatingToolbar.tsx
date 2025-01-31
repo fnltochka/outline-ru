@@ -5,7 +5,9 @@ import { Portal as ReactPortal } from "react-portal";
 import styled, { css } from "styled-components";
 import { isCode } from "@shared/editor/lib/isCode";
 import { findParentNode } from "@shared/editor/queries/findParentNode";
+import { EditorStyleHelper } from "@shared/editor/styles/EditorStyleHelper";
 import { depths, s } from "@shared/styles";
+import { HEADER_HEIGHT } from "~/components/Header";
 import { Portal } from "~/components/Portal";
 import useComponentSize from "~/hooks/useComponentSize";
 import useEventListener from "~/hooks/useEventListener";
@@ -131,57 +133,64 @@ function usePosition({
   if (isImageSelection) {
     const element = view.nodeDOM(selection.from);
 
-    // Images are wrapped which impacts positioning - need to traverse through
-    // p > span > div.image
-    const imageElement = (element as HTMLElement).getElementsByTagName(
-      "img"
-    )[0];
-    const { left, top, width } = imageElement.getBoundingClientRect();
+    // Images are wrapped which impacts positioning - need to get the element
+    // specifically tagged as the handle
+    const imageElement = element
+      ? (element as HTMLElement).getElementsByClassName(
+          EditorStyleHelper.imageHandle
+        )[0]
+      : undefined;
+    if (imageElement) {
+      const { left, top, width } = imageElement.getBoundingClientRect();
 
-    return {
-      left: Math.round(left + width / 2 - menuWidth / 2 - offsetParent.left),
-      top: Math.round(top - menuHeight - offsetParent.top),
-      offset: 0,
-      visible: true,
-    };
-  } else {
-    // calculate the horizontal center of the selection
-    const halfSelection =
-      Math.abs(selectionBounds.right - selectionBounds.left) / 2;
-    const centerOfSelection = selectionBounds.left + halfSelection;
+      return {
+        left: Math.round(left + width / 2 - menuWidth / 2 - offsetParent.left),
+        top: Math.round(top - menuHeight - offsetParent.top),
+        offset: 0,
+        visible: true,
+      };
+    }
+  }
 
-    // position the menu so that it is centered over the selection except in
-    // the cases where it would extend off the edge of the screen. In these
-    // instances leave a margin
-    const margin = 12;
-    const left = Math.min(
-      Math.min(
-        offsetParent.x + offsetParent.width - menuWidth - margin,
-        window.innerWidth - margin
-      ),
-      Math.max(
-        Math.max(offsetParent.x, margin),
-        centerOfSelection - menuWidth / 2
-      )
-    );
-    const top = Math.min(
+  // calculate the horizontal center of the selection
+  const halfSelection =
+    Math.abs(selectionBounds.right - selectionBounds.left) / 2;
+  const centerOfSelection = selectionBounds.left + halfSelection;
+
+  // position the menu so that it is centered over the selection except in
+  // the cases where it would extend off the edge of the screen. In these
+  // instances leave a margin
+  const margin = 12;
+  const left = Math.min(
+    Math.min(
+      offsetParent.x + offsetParent.width - menuWidth - margin,
+      window.innerWidth - margin
+    ),
+    Math.max(
+      Math.max(offsetParent.x, margin),
+      centerOfSelection - menuWidth / 2
+    )
+  );
+  const top = Math.max(
+    HEADER_HEIGHT,
+    Math.min(
       window.innerHeight - menuHeight - margin,
       Math.max(margin, selectionBounds.top - menuHeight)
-    );
+    )
+  );
 
-    // if the menu has been offset to not extend offscreen then we should adjust
-    // the position of the triangle underneath to correctly point to the center
-    // of the selection still
-    const offset = left - (centerOfSelection - menuWidth / 2);
-    return {
-      left: Math.round(left - offsetParent.left),
-      top: Math.round(top - offsetParent.top),
-      offset: Math.round(offset),
-      maxWidth: Math.min(window.innerWidth - margin * 2, offsetParent.width),
-      blockSelection: codeBlock || isColSelection || isRowSelection,
-      visible: true,
-    };
-  }
+  // if the menu has been offset to not extend offscreen then we should adjust
+  // the position of the triangle underneath to correctly point to the center
+  // of the selection still
+  const offset = left - (centerOfSelection - menuWidth / 2);
+  return {
+    left: Math.round(left - offsetParent.left),
+    top: Math.round(top - offsetParent.top),
+    offset: Math.round(offset),
+    maxWidth: Math.min(window.innerWidth - margin * 2, offsetParent.width),
+    blockSelection: codeBlock || isColSelection || isRowSelection,
+    visible: true,
+  };
 }
 
 const FloatingToolbar = React.forwardRef(function FloatingToolbar_(
@@ -223,6 +232,7 @@ const FloatingToolbar = React.forwardRef(function FloatingToolbar_(
       return (
         <ReactPortal>
           <MobileWrapper
+            ref={menuRef}
             style={{
               bottom: `calc(100% - ${height - rect.y}px)`,
             }}
@@ -301,6 +311,10 @@ const MobileWrapper = styled.div`
     right: 0;
     height: 100px;
     background-color: ${s("menuBackground")};
+  }
+
+  @media print {
+    display: none;
   }
 `;
 

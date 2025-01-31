@@ -1,8 +1,5 @@
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
 import { URL } from "url";
-import util from "util";
 import { subMinutes } from "date-fns";
 import {
   InferAttributes,
@@ -28,15 +25,13 @@ import {
   AfterUpdate,
   BeforeUpdate,
   BeforeCreate,
+  IsNumeric,
 } from "sequelize-typescript";
+import { isEmail } from "validator";
 import { TeamPreferenceDefaults } from "@shared/constants";
-import {
-  CollectionPermission,
-  TeamPreference,
-  TeamPreferences,
-  UserRole,
-} from "@shared/types";
+import { TeamPreference, TeamPreferences, UserRole } from "@shared/types";
 import { getBaseDomain, RESERVED_SUBDOMAINS } from "@shared/utils/domains";
+import { parseEmail } from "@shared/utils/email";
 import env from "@server/env";
 import { ValidationError } from "@server/errors";
 import DeleteAttachmentTask from "@server/queues/tasks/DeleteAttachmentTask";
@@ -54,8 +49,6 @@ import IsFQDN from "./validators/IsFQDN";
 import IsUrlOrRelativePath from "./validators/IsUrlOrRelativePath";
 import Length from "./validators/Length";
 import NotContainsUrl from "./validators/NotContainsUrl";
-
-const readFile = util.promisify(fs.readFile);
 
 @Scopes(() => ({
   withDomains: {
@@ -77,7 +70,7 @@ class Team extends ParanoidModel<
   Partial<InferCreationAttributes<Team>>
 > {
   @NotContainsUrl
-  @Length({ min: 2, max: 255, msg: "name must be between 2 to 255 characters" })
+  @Length({ min: 1, max: 255, msg: "name must be between 1 to 255 characters" })
   @Column
   name: string;
 
@@ -152,10 +145,19 @@ class Team extends ParanoidModel<
   @Column
   memberCollectionCreate: boolean;
 
+  @Default(true)
+  @Column
+  memberTeamCreate: boolean;
+
   @Default(UserRole.Member)
   @IsIn([[UserRole.Viewer, UserRole.Member]])
   @Column(DataType.STRING)
   defaultUserRole: UserRole;
+
+  /** Approximate size in bytes of all attachments in the team. */
+  @IsNumeric
+  @Column(DataType.BIGINT)
+  approximateTotalAttachmentsSize: number;
 
   @AllowNull
   @Column(DataType.JSONB)
@@ -275,57 +277,6 @@ class Team extends ParanoidModel<
     });
   };
 
-  provisionFirstCollection = async (userId: string) => {
-    await this.sequelize!.transaction(async (transaction) => {
-      const collection = await Collection.create(
-        {
-          name: "Welcome",
-          description: `This collection is a quick guide to what ${env.APP_NAME} is all about. Feel free to delete this collection once your team is up to speed with the basics!`,
-          teamId: this.id,
-          createdById: userId,
-          sort: Collection.DEFAULT_SORT,
-          permission: CollectionPermission.ReadWrite,
-        },
-        {
-          transaction,
-        }
-      );
-
-      // For the first collection we go ahead and create some intitial documents to get
-      // the team started. You can edit these in /server/onboarding/x.md
-      const onboardingDocs = [
-        "Integrations & API",
-        "Our Editor",
-        "Getting Started",
-        "What is Outline",
-      ];
-
-      for (const title of onboardingDocs) {
-        const text = await readFile(
-          path.join(process.cwd(), "server", "onboarding", `${title}.md`),
-          "utf8"
-        );
-        const document = await Document.create(
-          {
-            version: 2,
-            isWelcome: true,
-            parentDocumentId: null,
-            collectionId: collection.id,
-            teamId: collection.teamId,
-            lastModifiedById: collection.createdById,
-            createdById: collection.createdById,
-            title,
-            text,
-          },
-          { transaction }
-        );
-        await document.publish(collection.createdById, collection.id, {
-          transaction,
-        });
-      }
-    });
-  };
-
   public collectionIds = async function (paranoid = true) {
     const models = await Collection.findAll({
       attributes: ["id"],
@@ -344,14 +295,20 @@ class Team extends ParanoidModel<
    * Find whether the passed domain can be used to sign-in to this team. Note
    * that this method always returns true if no domain restrictions are set.
    *
-   * @param domain The domain to check
+   * @param domainOrEmail The domain or email to check
    * @returns True if the domain is allowed to sign-in to this team
    */
   public isDomainAllowed = async function (
     this: Team,
-    domain: string
+    domainOrEmail: string
   ): Promise<boolean> {
     const allowedDomains = (await this.$get("allowedDomains")) || [];
+
+    let domain = domainOrEmail;
+    if (isEmail(domainOrEmail)) {
+      const parsed = parseEmail(domainOrEmail);
+      domain = parsed.domain;
+    }
 
     return (
       allowedDomains.length === 0 ||

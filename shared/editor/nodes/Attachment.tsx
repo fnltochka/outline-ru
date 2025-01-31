@@ -1,4 +1,4 @@
-import Token from "markdown-it/lib/token";
+import { Token } from "markdown-it";
 import { DownloadIcon } from "outline-icons";
 import { NodeSpec, NodeType, Node as ProsemirrorNode } from "prosemirror-model";
 import { Command, NodeSelection } from "prosemirror-state";
@@ -63,7 +63,7 @@ export default class Attachment extends Node {
           download: node.attrs.title,
           "data-size": node.attrs.size,
         },
-        node.attrs.title,
+        String(node.attrs.title),
       ],
       toPlainText: (node) => node.attrs.title,
     };
@@ -86,6 +86,9 @@ export default class Attachment extends Node {
         href={node.attrs.href}
         title={node.attrs.title}
         onMouseDown={this.handleSelect(props)}
+        onDoubleClick={() => {
+          this.editor.commands.downloadAttachment();
+        }}
         onClick={(event) => {
           if (isEditable) {
             event.preventDefault();
@@ -159,6 +162,7 @@ export default class Attachment extends Node {
         // create a temporary link node and click it
         const link = document.createElement("a");
         link.href = node.attrs.href;
+        link.target = "_blank";
         document.body.appendChild(link);
         link.click();
 

@@ -34,6 +34,7 @@ function Security() {
     guestSignin: team.guestSignin,
     defaultUserRole: team.defaultUserRole,
     memberCollectionCreate: team.memberCollectionCreate,
+    memberTeamCreate: team.memberTeamCreate,
     inviteRequired: team.inviteRequired,
   });
 
@@ -220,9 +221,6 @@ function Security() {
       )}
 
       {!data.inviteRequired && (
-        <DomainManagement onSuccess={showSuccessMessage} />
-      )}
-      {!data.inviteRequired && (
         <SettingRow
           label={t("Default role")}
           name="defaultUserRole"
@@ -251,6 +249,8 @@ function Security() {
         </SettingRow>
       )}
 
+      <DomainManagement onSuccess={showSuccessMessage} />
+
       <h2>{t("Behavior")}</h2>
       <SettingRow
         label={t("Public document sharing")}
@@ -271,6 +271,19 @@ function Security() {
         <Switch
           id={TeamPreference.ViewersCanExport}
           checked={team.getPreference(TeamPreference.ViewersCanExport)}
+          onChange={handlePreferenceChange}
+        />
+      </SettingRow>
+      <SettingRow
+        label={t("Users can delete account")}
+        name={TeamPreference.MembersCanDeleteAccount}
+        description={t(
+          "When enabled, users can delete their own account from the workspace"
+        )}
+      >
+        <Switch
+          id={TeamPreference.MembersCanDeleteAccount}
+          checked={team.getPreference(TeamPreference.MembersCanDeleteAccount)}
           onChange={handlePreferenceChange}
         />
       </SettingRow>
@@ -300,6 +313,19 @@ function Security() {
           onChange={handleChange}
         />
       </SettingRow>
+      {isCloudHosted && (
+        <SettingRow
+          label={t("Workspace creation")}
+          name="memberTeamCreate"
+          description={t("Allow editors to create new workspaces")}
+        >
+          <Switch
+            id="memberTeamCreate"
+            checked={data.memberTeamCreate}
+            onChange={handleChange}
+          />
+        </SettingRow>
+      )}
     </Scene>
   );
 }

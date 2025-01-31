@@ -1,15 +1,19 @@
+import {
+  useFocusEffect,
+  useRovingTabIndex,
+} from "@getoutline/react-roving-tabindex";
 import { observer } from "mobx-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { CompositeStateReturn, CompositeItem } from "reakit/Composite";
 import styled, { css } from "styled-components";
 import breakpoint from "styled-components-breakpoint";
-import { s } from "@shared/styles";
+import EventBoundary from "@shared/components/EventBoundary";
+import Icon from "@shared/components/Icon";
+import { s, hover } from "@shared/styles";
 import Document from "~/models/Document";
 import Badge from "~/components/Badge";
 import DocumentMeta from "~/components/DocumentMeta";
-import EventBoundary from "~/components/EventBoundary";
 import Flex from "~/components/Flex";
 import Highlight from "~/components/Highlight";
 import NudeButton from "~/components/NudeButton";
@@ -17,10 +21,10 @@ import StarButton, { AnimatedStar } from "~/components/Star";
 import Tooltip from "~/components/Tooltip";
 import useBoolean from "~/hooks/useBoolean";
 import useCurrentUser from "~/hooks/useCurrentUser";
+import { useLocationSidebarContext } from "~/hooks/useLocationSidebarContext";
 import DocumentMenu from "~/menus/DocumentMenu";
-import { hover } from "~/styles";
 import { documentPath } from "~/utils/routeHelpers";
-import EmojiIcon from "./Icons/EmojiIcon";
+import { determineSidebarContext } from "./Sidebar/components/SidebarContext";
 
 type Props = {
   document: Document;
@@ -32,14 +36,13 @@ type Props = {
   showPin?: boolean;
   showDraft?: boolean;
   showTemplate?: boolean;
-} & CompositeStateReturn;
+};
 
 const SEARCH_RESULT_REGEX = /<b\b[^>]*>(.*?)<\/b>/gi;
 
 function replaceResultMarks(tag: string) {
-  // don't use SEARCH_RESULT_REGEX here as it causes
-  // an infinite loop to trigger a regex inside it's own callback
-  return tag.replace(/<b\b[^>]*>(.*?)<\/b>/gi, "$1");
+  // don't use SEARCH_RESULT_REGEX directly here as it causes an infinite loop
+  return tag.replace(new RegExp(SEARCH_RESULT_REGEX.source), "$1");
 }
 
 function DocumentListItem(
@@ -48,7 +51,17 @@ function DocumentListItem(
 ) {
   const { t } = useTranslation();
   const user = useCurrentUser();
+  const locationSidebarContext = useLocationSidebarContext();
   const [menuOpen, handleMenuOpen, handleMenuClose] = useBoolean();
+
+  let itemRef: React.Ref<HTMLAnchorElement> =
+    React.useRef<HTMLAnchorElement>(null);
+  if (ref) {
+    itemRef = ref;
+  }
+
+  const { focused, ...rovingTabIndex } = useRovingTabIndex(itemRef, false);
+  useFocusEffect(focused, itemRef);
 
   const {
     document,
@@ -65,13 +78,17 @@ function DocumentListItem(
   const queryIsInTitle =
     !!highlight &&
     !!document.title.toLowerCase().includes(highlight.toLowerCase());
-  const canStar =
-    !document.isDraft && !document.isArchived && !document.isTemplate;
+  const canStar = !document.isArchived && !document.isTemplate;
+
+  const sidebarContext = determineSidebarContext({
+    document,
+    user,
+    currentContext: locationSidebarContext,
+  });
 
   return (
-    <CompositeItem
-      as={DocumentLink}
-      ref={ref}
+    <DocumentLink
+      ref={itemRef}
       dir={document.dir}
       role="menuitem"
       $isStarred={document.isStarred}
@@ -80,15 +97,17 @@ function DocumentListItem(
         pathname: documentPath(document),
         state: {
           title: document.titleWithDefault,
+          sidebarContext,
         },
       }}
       {...rest}
+      {...rovingTabIndex}
     >
       <Content>
         <Heading dir={document.dir}>
-          {document.emoji && (
+          {document.icon && (
             <>
-              <EmojiIcon emoji={document.emoji} size={24} />
+              <Icon value={document.icon} color={document.color ?? undefined} />
               &nbsp;
             </>
           )}
@@ -100,19 +119,15 @@ function DocumentListItem(
           {document.isBadgedNew && document.createdBy?.id !== user.id && (
             <Badge yellow>{t("New")}</Badge>
           )}
+          {document.isDraft && showDraft && (
+            <Tooltip content={t("Only visible to you")} placement="top">
+              <Badge>{t("Draft")}</Badge>
+            </Tooltip>
+          )}
           {canStar && (
             <StarPositioner>
               <StarButton document={document} />
             </StarPositioner>
-          )}
-          {document.isDraft && showDraft && (
-            <Tooltip
-              content={t("Only visible to you")}
-              delay={500}
-              placement="top"
-            >
-              <Badge>{t("Draft")}</Badge>
-            </Tooltip>
           )}
           {document.isTemplate && showTemplate && (
             <Badge primary>{t("Template")}</Badge>
@@ -143,7 +158,7 @@ function DocumentListItem(
           modal={false}
         />
       </Actions>
-    </CompositeItem>
+    </DocumentLink>
   );
 }
 
@@ -264,6 +279,8 @@ const ResultContext = styled(Highlight)`
   font-size: 15px;
   margin-top: -0.25em;
   margin-bottom: 0.25em;
+  max-height: 90px;
+  overflow: hidden;
 `;
 
 export default observer(React.forwardRef(DocumentListItem));

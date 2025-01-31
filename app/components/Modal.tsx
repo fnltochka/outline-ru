@@ -25,6 +25,7 @@ type Props = {
   isOpen: boolean;
   fullscreen?: boolean;
   title?: React.ReactNode;
+  style?: React.CSSProperties;
   onRequestClose: () => void;
 };
 
@@ -33,6 +34,7 @@ const Modal: React.FC<Props> = ({
   isOpen,
   fullscreen = true,
   title = "Untitled",
+  style,
   onRequestClose,
 }: Props) => {
   const dialog = useDialogState({
@@ -115,7 +117,7 @@ const Modal: React.FC<Props> = ({
                     column
                     reverse
                   >
-                    <SmallContent shadow>
+                    <SmallContent style={style} shadow>
                       <ErrorBoundary component="div">{children}</ErrorBoundary>
                     </SmallContent>
                     <Header>
@@ -172,7 +174,6 @@ const Fullscreen = styled.div<FullscreenProps>`
   justify-content: center;
   align-items: flex-start;
   background: ${s("background")};
-  transition: ${s("backgroundTransition")};
   outline: none;
 
   ${breakpoint("tablet")`
@@ -254,8 +255,8 @@ const Header = styled(Flex)`
 const Small = styled.div`
   animation: ${fadeAndScaleIn} 250ms ease;
 
-  margin: auto auto;
-  width: 30vw;
+  margin: 25vh auto auto auto;
+  width: 75vw;
   min-width: 350px;
   max-width: 450px;
   z-index: ${depths.modal};
@@ -263,7 +264,6 @@ const Small = styled.div`
   justify-content: center;
   align-items: flex-start;
   background: ${s("modalBackground")};
-  transition: ${s("backgroundTransition")};
   box-shadow: ${s("modalShadow")};
   border-radius: 8px;
   outline: none;

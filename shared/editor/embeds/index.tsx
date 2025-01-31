@@ -1,17 +1,20 @@
 import * as React from "react";
 import styled from "styled-components";
 import { Primitive } from "utility-types";
+import env from "../../env";
 import { IntegrationService, IntegrationType } from "../../types";
 import type { IntegrationSettings } from "../../types";
 import { urlRegex } from "../../utils/urls";
 import Image from "../components/Img";
 import Berrycast from "./Berrycast";
 import Diagrams from "./Diagrams";
+import Dropbox from "./Dropbox";
 import Gist from "./Gist";
 import GitLabSnippet from "./GitLabSnippet";
 import InVision from "./InVision";
 import JSFiddle from "./JSFiddle";
 import Linkedin from "./Linkedin";
+import Pinterest from "./Pinterest";
 import Spotify from "./Spotify";
 import Trello from "./Trello";
 import Vimeo from "./Vimeo";
@@ -28,9 +31,9 @@ export type EmbedProps = {
 };
 
 const Img = styled(Image)`
-  border-radius: 2px;
+  border-radius: 3px;
   background: #fff;
-  box-shadow: 0 0 0 1px #fff;
+  box-shadow: 0 0 0 1px ${(props) => props.theme.divider};
   margin: 3px;
   width: 18px;
   height: 18px;
@@ -43,6 +46,8 @@ export class EmbedDescriptor {
   name?: string;
   /** The title of the embed */
   title: string;
+  /** A placeholder that will be shown in the URL input */
+  placeholder?: string;
   /** A keyboard shortcut that will trigger the embed */
   shortcut?: string;
   /** Keywords that will match this embed in menus */
@@ -53,7 +58,9 @@ export class EmbedDescriptor {
   defaultHidden?: boolean;
   /** Whether the bottom toolbar should be hidden – use this when the embed itself includes a footer */
   hideToolbar?: boolean;
-  /** A regex that will be used to match the embed when pasting a URL */
+  /** Whether the embed should match automatically when pasting a URL (default to true) */
+  matchOnInput?: boolean;
+  /** A regex that will be used to match the embed from a URL. */
   regexMatch?: RegExp[];
   /**
    * A function that will be used to transform the URL. The resulting string is passed as the src
@@ -79,11 +86,13 @@ export class EmbedDescriptor {
     this.icon = options.icon;
     this.name = options.name;
     this.title = options.title;
+    this.placeholder = options.placeholder;
     this.shortcut = options.shortcut;
     this.keywords = options.keywords;
     this.tooltip = options.tooltip;
     this.defaultHidden = options.defaultHidden;
     this.hideToolbar = options.hideToolbar;
+    this.matchOnInput = options.matchOnInput ?? true;
     this.regexMatch = options.regexMatch;
     this.transformMatch = options.transformMatch;
     this.attrs = options.attrs;
@@ -152,7 +161,7 @@ const embeds: EmbedDescriptor[] = [
       /(?:https?:\/\/)?(www\.bilibili\.com)\/video\/([\w\d]+)?(\?\S+)?/i,
     ],
     transformMatch: (matches: RegExpMatchArray) =>
-      `https://player.bilibili.com/player.html?bvid=${matches[2]}&page=1&high_quality=1`,
+      `https://player.bilibili.com/player.html?bvid=${matches[2]}&page=1&high_quality=1&autoplay=0`,
     icon: <Img src="/images/bilibili.png" alt="Bilibili" />,
   }),
   new EmbedDescriptor({
@@ -170,10 +179,22 @@ const embeds: EmbedDescriptor[] = [
     title: "Canva",
     keywords: "design",
     regexMatch: [
-      /^https:\/\/(?:www\.)?canva\.com\/design\/([a-zA-Z0-9]*)\/(.*)$/,
+      /^https:\/\/(?:www\.)?canva\.com\/design\/([\/a-zA-Z0-9_\-]*)$/,
     ],
-    transformMatch: (matches: RegExpMatchArray) =>
-      `https://www.canva.com/design/${matches[1]}/view?embed`,
+    transformMatch: (matches: RegExpMatchArray) => {
+      const input = matches.input ?? matches[0];
+
+      try {
+        const url = new URL(input);
+        const params = new URLSearchParams(url.search);
+        params.append("embed", "");
+        return `${url.origin}${url.pathname}?${params.toString()}`;
+      } catch (e) {
+        //
+      }
+
+      return input;
+    },
     icon: <Img src="/images/canva.png" alt="Canva" />,
   }),
   new EmbedDescriptor({
@@ -208,7 +229,7 @@ const embeds: EmbedDescriptor[] = [
   new EmbedDescriptor({
     title: "DBDiagram",
     keywords: "diagrams database",
-    regexMatch: [new RegExp("^https://dbdiagram.io/(embed|d)/(\\w+)$")],
+    regexMatch: [new RegExp("^https://dbdiagram.io/(embed|e|d)/(\\w+)(/.*)?$")],
     transformMatch: (matches) => `https://dbdiagram.io/embed/${matches[2]}`,
     icon: <Img src="/images/dbdiagram.png" alt="DBDiagram" />,
   }),
@@ -228,18 +249,37 @@ const embeds: EmbedDescriptor[] = [
       `https://share.descript.com/embed/${matches[1]}`,
     icon: <Img src="/images/descript.png" alt="Descript" />,
   }),
+  ...(env.DROPBOX_APP_KEY
+    ? [
+        new EmbedDescriptor({
+          title: "Dropbox",
+          keywords: "file document",
+          regexMatch: [
+            new RegExp("^https?://(www.)?dropbox.com/(s|scl)/(.*)$"),
+          ],
+          icon: <Img src="/images/dropbox.png" alt="Dropbox" />,
+          component: Dropbox,
+        }),
+      ]
+    : []),
   new EmbedDescriptor({
     title: "Figma",
     keywords: "design svg vector",
     regexMatch: [
       new RegExp(
-        "^https://([w.-]+\\.)?figma\\.com/(file|proto)/([0-9a-zA-Z]{22,128})(?:/.*)?$"
+        "^https://([w.-]+\\.)?figma\\.com/(file|proto|board|design)/([0-9a-zA-Z]{22,128})(?:/.*)?$"
       ),
+      new RegExp("^https://([w.-]+\\.)?figma\\.com/embed(.*)$"),
     ],
-    transformMatch: (matches) =>
-      `https://www.figma.com/embed?embed_host=outline&url=${encodeURIComponent(
+    transformMatch: (matches) => {
+      if (matches[0].includes("/embed")) {
+        return matches[0];
+      }
+
+      return `https://www.figma.com/embed?embed_host=outline&url=${encodeURIComponent(
         matches[0]
-      )}`,
+      )}`;
+    },
     icon: <Img src="/images/figma.png" alt="Figma" />,
   }),
   new EmbedDescriptor({
@@ -376,11 +416,20 @@ const embeds: EmbedDescriptor[] = [
     transformMatch: (matches: RegExpMatchArray) => {
       const input = matches.input ?? matches[0];
 
-      if (input.includes("style=singlePage")) {
-        return input;
+      try {
+        const url = new URL(input);
+        const params = new URLSearchParams(url.search);
+        if (params.has("embed") || params.get("style") === "singlePage") {
+          return input;
+        }
+
+        params.append("embed", "true");
+        return `${url.origin}${url.pathname}?${params.toString()}`;
+      } catch (e) {
+        //
       }
 
-      return input.replace(/(\?embed=true)?$/, "?embed=true");
+      return input;
     },
     icon: <Img src="/images/grist.png" alt="Grist" />,
   }),
@@ -541,7 +590,7 @@ const embeds: EmbedDescriptor[] = [
     title: "Tldraw",
     keywords: "draw schematics diagrams",
     regexMatch: [
-      new RegExp("^https?://(beta|www|old)\\.tldraw\\.com/[rsv]/(.*)"),
+      new RegExp("^https?://(beta|www|old)\\.tldraw\\.com/[rsvo]+/(.*)"),
     ],
     transformMatch: (matches: RegExpMatchArray) => matches[0],
     icon: <Img src="/images/tldraw.png" alt="Tldraw" />,
@@ -582,6 +631,18 @@ const embeds: EmbedDescriptor[] = [
     component: Vimeo,
   }),
   new EmbedDescriptor({
+    title: "Pinterest",
+    keywords: "board moodboard pins",
+    regexMatch: [
+      // Match board URLs but exclude pins
+      /^(?:https?:\/\/)?(?:(?:www\.|[a-z]{2}\.)?pinterest\.(?:com|[a-z]{2,3}))\/(?!pin\/)([^/]+)\/([^/]+)\/?$/,
+      // Match profile URLs but exclude pins
+      /^(?:https?:\/\/)?(?:(?:www\.|[a-z]{2}\.)?pinterest\.(?:com|[a-z]{2,3}))\/(?!pin\/)([^/]+)\/?$/,
+    ],
+    icon: <Img src="/images/pinterest.png" alt="Pinterest" />,
+    component: Pinterest,
+  }),
+  new EmbedDescriptor({
     title: "Whimsical",
     keywords: "whiteboard",
     regexMatch: [
@@ -599,6 +660,18 @@ const embeds: EmbedDescriptor[] = [
     ],
     icon: <Img src="/images/youtube.png" alt="YouTube" />,
     component: YouTube,
+  }),
+  /* The generic iframe embed should always be the last one */
+  new EmbedDescriptor({
+    title: "Embed",
+    keywords: "iframe webpage",
+    placeholder: "Paste a URL to embed",
+    icon: <Img src="/images/embed.png" alt="Embed" />,
+    defaultHidden: false,
+    matchOnInput: false,
+    regexMatch: [new RegExp("^https?://(.*)$")],
+    transformMatch: (matches: RegExpMatchArray) => matches[0],
+    hideToolbar: true,
   }),
 ];
 

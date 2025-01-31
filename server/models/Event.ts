@@ -18,7 +18,7 @@ import {
   Length,
 } from "sequelize-typescript";
 import { globalEventQueue } from "../queues";
-import { APIContext, Event as TEvent } from "../types";
+import { APIContext, AuthenticationType } from "../types";
 import Collection from "./Collection";
 import Document from "./Document";
 import Team from "./Team";
@@ -36,9 +36,7 @@ class Event extends IdModel<
   @Column(DataType.UUID)
   modelId: string | null;
 
-  /**
-   * The name of the event.
-   */
+  /** The name of the event. */
   @Length({
     max: 255,
     msg: "name must be 255 characters or less",
@@ -46,15 +44,18 @@ class Event extends IdModel<
   @Column(DataType.STRING)
   name: string;
 
-  /**
-   * The originating IP address of the event.
-   */
+  /** The originating IP address of the event. */
   @IsIP
   @Column
   ip: string | null;
 
+  /** The type of authentication used to create the event. */
+  @Column(DataType.ENUM(...Object.values(AuthenticationType)))
+  authType: AuthenticationType | null;
+
   /**
    * Metadata associated with the event, previously used for storing some changed attributes.
+   * Note that the `data` column will be visible to the client and API requests.
    */
   @Column(DataType.JSONB)
   data: Record<string, any> | null;
@@ -64,7 +65,7 @@ class Event extends IdModel<
    * used for arbitrary data associated with the event.
    */
   @Column(DataType.JSONB)
-  changes?: Record<string, any> | null;
+  changes: Record<string, any> | null;
 
   // hooks
 
@@ -77,9 +78,17 @@ class Event extends IdModel<
   }
 
   @AfterSave
-  static async enqueue(model: Event, options: SaveOptions<Event>) {
+  static async enqueue(
+    model: Event,
+    options: SaveOptions<InferAttributes<Event>>
+  ) {
     if (options.transaction) {
-      options.transaction.afterCommit(() => void globalEventQueue.add(model));
+      // 'findOrCreate' creates a new transaction always, and the transaction from the middleware is set as its parent.
+      // We want to use the parent transaction, otherwise the 'afterCommit' hook will never fire in this case.
+      // See: https://github.com/sequelize/sequelize/issues/17452
+      (options.transaction.parent || options.transaction).afterCommit(
+        () => void globalEventQueue.add(model)
+      );
       return;
     }
     void globalEventQueue.add(model);
@@ -159,93 +168,26 @@ class Event extends IdModel<
   static createFromContext(
     ctx: APIContext,
     attributes: Omit<Partial<Event>, "ip" | "teamId" | "actorId"> = {},
+    defaultAttributes: Pick<Partial<Event>, "ip" | "teamId" | "actorId"> = {},
     options?: CreateOptions<InferAttributes<Event>>
   ) {
-    const { user } = ctx.state.auth;
+    const user = ctx.state.auth?.user;
+    const authType = ctx.state.auth?.type;
+
     return this.create(
       {
         ...attributes,
-        actorId: user.id,
-        teamId: user.teamId,
-        ip: ctx.request.ip,
+        actorId: user?.id || defaultAttributes.actorId,
+        teamId: user?.teamId || defaultAttributes.teamId,
+        ip: ctx.request.ip || defaultAttributes.ip,
+        authType,
       },
-      options
+      {
+        transaction: ctx.state.transaction,
+        ...options,
+      }
     );
   }
-
-  static ACTIVITY_EVENTS: TEvent["name"][] = [
-    "collections.create",
-    "collections.delete",
-    "collections.move",
-    "collections.permission_changed",
-    "collections.add_user",
-    "collections.remove_user",
-    "documents.publish",
-    "documents.unpublish",
-    "documents.archive",
-    "documents.unarchive",
-    "documents.move",
-    "documents.delete",
-    "documents.permanent_delete",
-    "documents.restore",
-    "documents.add_user",
-    "documents.remove_user",
-    "revisions.create",
-    "users.create",
-    "users.demote",
-    "userMemberships.update",
-  ];
-
-  static AUDIT_EVENTS: TEvent["name"][] = [
-    "api_keys.create",
-    "api_keys.delete",
-    "authenticationProviders.update",
-    "collections.create",
-    "collections.update",
-    "collections.permission_changed",
-    "collections.move",
-    "collections.add_user",
-    "collections.remove_user",
-    "collections.add_group",
-    "collections.remove_group",
-    "collections.delete",
-    "documents.create",
-    "documents.publish",
-    "documents.update",
-    "documents.archive",
-    "documents.unarchive",
-    "documents.move",
-    "documents.delete",
-    "documents.permanent_delete",
-    "documents.restore",
-    "documents.add_user",
-    "documents.remove_user",
-    "groups.create",
-    "groups.update",
-    "groups.delete",
-    "pins.create",
-    "pins.update",
-    "pins.delete",
-    "revisions.create",
-    "shares.create",
-    "shares.update",
-    "shares.revoke",
-    "teams.update",
-    "users.create",
-    "users.update",
-    "users.signin",
-    "users.signout",
-    "users.promote",
-    "users.demote",
-    "users.invite",
-    "users.suspend",
-    "users.activate",
-    "users.delete",
-    "fileOperations.create",
-    "fileOperations.delete",
-    "webhookSubscriptions.create",
-    "webhookSubscriptions.delete",
-  ];
 }
 
 export default Event;

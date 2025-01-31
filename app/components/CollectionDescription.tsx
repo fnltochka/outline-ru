@@ -65,7 +65,7 @@ function CollectionDescription({ collection }: Props) {
       debounce(async (getValue) => {
         try {
           await collection.save({
-            description: getValue(),
+            data: getValue(false),
           });
           setDirty(false);
         } catch (err) {
@@ -109,7 +109,7 @@ function CollectionDescription({ collection }: Props) {
             >
               <Editor
                 key={key}
-                defaultValue={collection.description || ""}
+                defaultValue={collection.data}
                 onChange={handleChange}
                 placeholder={placeholder}
                 readOnly={!isEditing}
@@ -201,7 +201,6 @@ const Input = styled.div`
   margin: -8px;
   padding: 8px;
   border-radius: 8px;
-  transition: ${s("backgroundTransition")};
 
   &:after {
     content: "";
@@ -226,7 +225,7 @@ const Input = styled.div`
   }
 
   &[data-editing="true"] {
-    background: ${s("secondaryBackground")};
+    background: ${s("backgroundSecondary")};
   }
 
   .block-menu-trigger,

@@ -6,25 +6,21 @@ import { usePopoverState, PopoverDisclosure } from "reakit/Popover";
 import Document from "~/models/Document";
 import Button from "~/components/Button";
 import Popover from "~/components/Popover";
-import SharePopover from "~/components/Sharing";
-import useCurrentTeam from "~/hooks/useCurrentTeam";
+import SharePopover from "~/components/Sharing/Document";
+import useMobile from "~/hooks/useMobile";
 import useStores from "~/hooks/useStores";
 
 type Props = {
+  /** Document being shared */
   document: Document;
 };
 
 function ShareButton({ document }: Props) {
   const { t } = useTranslation();
   const { shares } = useStores();
-  const team = useCurrentTeam();
   const share = shares.getByDocumentId(document.id);
   const sharedParent = shares.getByDocumentParents(document.id);
   const domain = share?.domain || sharedParent?.domain;
-  const isPubliclyShared =
-    team.sharing !== false &&
-    document.collection?.sharing !== false &&
-    (share?.published || (sharedParent?.published && !document.isDraft));
 
   const popover = usePopoverState({
     gutter: 0,
@@ -32,25 +28,31 @@ function ShareButton({ document }: Props) {
     unstable_fixed: true,
   });
 
+  const isMobile = useMobile();
+  if (isMobile) {
+    return null;
+  }
+
+  const icon = document.isPubliclyShared ? <GlobeIcon /> : undefined;
+
   return (
     <>
       <PopoverDisclosure {...popover}>
         {(props) => (
-          <Button
-            icon={isPubliclyShared ? <GlobeIcon /> : undefined}
-            neutral
-            {...props}
-          >
+          <Button icon={icon} neutral {...props}>
             {t("Share")} {domain && <>&middot; {domain}</>}
           </Button>
         )}
       </PopoverDisclosure>
 
-      <Popover {...popover} aria-label={t("Share")} width={400}>
+      <Popover
+        {...popover}
+        aria-label={t("Share")}
+        width={400}
+        scrollable={false}
+      >
         <SharePopover
           document={document}
-          share={share}
-          sharedParent={sharedParent}
           onRequestClose={popover.hide}
           visible={popover.visible}
         />

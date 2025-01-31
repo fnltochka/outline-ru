@@ -1,10 +1,11 @@
 import { observer } from "mobx-react";
-import { EditIcon, SearchIcon, HomeIcon, SidebarIcon } from "outline-icons";
+import { DraftsIcon, SearchIcon, HomeIcon, SidebarIcon } from "outline-icons";
 import * as React from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { useTranslation } from "react-i18next";
 import styled from "styled-components";
+import { metaDisplay } from "@shared/utils/keyboard";
 import Flex from "~/components/Flex";
 import Scrollable from "~/components/Scrollable";
 import Text from "~/components/Text";
@@ -14,7 +15,6 @@ import useCurrentUser from "~/hooks/useCurrentUser";
 import usePolicy from "~/hooks/usePolicy";
 import useStores from "~/hooks/useStores";
 import OrganizationMenu from "~/menus/OrganizationMenu";
-import { metaDisplay } from "~/utils/keyboard";
 import { homePath, draftsPath, searchPath } from "~/utils/routeHelpers";
 import TeamLogo from "../TeamLogo";
 import Tooltip from "../Tooltip";
@@ -34,16 +34,18 @@ import TrashLink from "./components/TrashLink";
 
 function AppSidebar() {
   const { t } = useTranslation();
-  const { documents, ui } = useStores();
+  const { documents, ui, collections } = useStores();
   const team = useCurrentTeam();
   const user = useCurrentUser();
   const can = usePolicy(team);
 
   React.useEffect(() => {
+    void collections.fetchAll();
+
     if (!user.isViewer) {
       void documents.fetchDrafts();
     }
-  }, [documents, user.isViewer]);
+  }, [documents, collections, user.isViewer]);
 
   const [dndArea, setDndArea] = React.useState();
   const handleSidebarRef = React.useCallback((node) => setDndArea(node), []);
@@ -55,7 +57,7 @@ function AppSidebar() {
   );
 
   return (
-    <Sidebar ref={handleSidebarRef}>
+    <Sidebar hidden={!ui.readyToShow} ref={handleSidebarRef}>
       <HistoryNavigation />
       {dndArea && (
         <DndProvider backend={HTML5Backend} options={html5Options}>
@@ -78,7 +80,6 @@ function AppSidebar() {
                 <Tooltip
                   content={t("Toggle sidebar")}
                   shortcut={`${metaDisplay}+.`}
-                  delay={500}
                 >
                   <ToggleButton
                     position="bottom"
@@ -92,7 +93,7 @@ function AppSidebar() {
               </SidebarButton>
             )}
           </OrganizationMenu>
-          <Scrollable flex shadow>
+          <Overflow>
             <Section>
               <SidebarLink
                 to={homePath()}
@@ -109,13 +110,15 @@ function AppSidebar() {
               {can.createDocument && (
                 <SidebarLink
                   to={draftsPath()}
-                  icon={<EditIcon />}
+                  icon={<DraftsIcon />}
                   label={
                     <Flex align="center" justify="space-between">
                       {t("Drafts")}
                       {documents.totalDrafts > 0 ? (
                         <Drafts size="xsmall" type="tertiary">
-                          {documents.totalDrafts}
+                          {documents.totalDrafts > 25
+                            ? "25+"
+                            : documents.totalDrafts}
                         </Drafts>
                       ) : null}
                     </Flex>
@@ -123,22 +126,24 @@ function AppSidebar() {
                 />
               )}
             </Section>
+          </Overflow>
+          <Scrollable flex shadow>
+            <Section>
+              <Starred />
+            </Section>
             <Section>
               <SharedWithMe />
             </Section>
             <Section>
-              <Starred />
-            </Section>
-            <Section auto>
               <Collections />
             </Section>
+            {can.createDocument && (
+              <Section auto>
+                <ArchiveLink />
+              </Section>
+            )}
             <Section>
-              {can.createDocument && (
-                <>
-                  <ArchiveLink />
-                  <TrashLink />
-                </>
-              )}
+              {can.createDocument && <TrashLink />}
               <SidebarAction action={inviteUser} />
             </Section>
           </Scrollable>
@@ -147,6 +152,11 @@ function AppSidebar() {
     </Sidebar>
   );
 }
+
+const Overflow = styled.div`
+  overflow: hidden;
+  flex-shrink: 0;
+`;
 
 const Drafts = styled(Text)`
   margin: 0 4px;

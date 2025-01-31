@@ -20,6 +20,7 @@ import {
 import { UrlHelper } from "@shared/utils/UrlHelper";
 import env from "@server/env";
 import { ValidationError } from "@server/errors";
+import { APIContext } from "@server/types";
 import Collection from "./Collection";
 import Document from "./Document";
 import Team from "./Team";
@@ -48,7 +49,12 @@ import Length from "./validators/Length";
   withCollectionPermissions: (userId: string) => ({
     include: [
       {
-        model: Document.scope("withDrafts"),
+        model: Document.scope([
+          "withDrafts",
+          {
+            method: ["withMembership", userId],
+          },
+        ]),
         paranoid: true,
         as: "document",
         include: [
@@ -58,13 +64,6 @@ import Length from "./validators/Length";
               method: ["withMembership", userId],
             }),
             as: "collection",
-          },
-          {
-            association: "memberships",
-            where: {
-              userId,
-            },
-            required: false,
           },
         ],
       },
@@ -186,10 +185,15 @@ class Share extends IdModel<
   @Column(DataType.UUID)
   documentId: string;
 
-  revoke(userId: string) {
+  @Default(true)
+  @Column
+  allowIndexing: boolean;
+
+  revoke(ctx: APIContext) {
+    const { user } = ctx.context.auth;
     this.revokedAt = new Date();
-    this.revokedById = userId;
-    return this.save();
+    this.revokedById = user.id;
+    return this.saveWithCtx(ctx, undefined, { name: "revoke" });
   }
 }
 

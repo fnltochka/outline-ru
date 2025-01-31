@@ -3,19 +3,20 @@ import presentAttachment from "./attachment";
 import presentAuthenticationProvider from "./authenticationProvider";
 import presentAvailableTeam from "./availableTeam";
 import presentCollection from "./collection";
-import presentCollectionGroupMembership from "./collectionGroupMembership";
 import presentComment from "./comment";
 import presentDocument from "./document";
 import presentEvent from "./event";
 import presentFileOperation from "./fileOperation";
 import presentGroup from "./group";
 import presentGroupMembership from "./groupMembership";
+import presentGroupUser from "./groupUser";
 import presentIntegration from "./integration";
 import presentMembership from "./membership";
 import presentPin from "./pin";
 import presentPolicies from "./policy";
 import presentProviderConfig from "./providerConfig";
 import presentPublicTeam from "./publicTeam";
+import presentReaction from "./reaction";
 import presentRevision from "./revision";
 import presentSearchQuery from "./searchQuery";
 import presentShare from "./share";
@@ -31,12 +32,12 @@ export {
   presentAuthenticationProvider,
   presentAvailableTeam,
   presentCollection,
-  presentCollectionGroupMembership,
   presentComment,
   presentDocument,
   presentEvent,
   presentFileOperation,
   presentGroup,
+  presentGroupUser,
   presentGroupMembership,
   presentIntegration,
   presentMembership,
@@ -44,6 +45,7 @@ export {
   presentPin,
   presentPolicies,
   presentProviderConfig,
+  presentReaction,
   presentRevision,
   presentSearchQuery,
   presentShare,

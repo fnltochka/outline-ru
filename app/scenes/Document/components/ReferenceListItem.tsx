@@ -3,12 +3,13 @@ import { DocumentIcon } from "outline-icons";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
-import { s, ellipsis } from "@shared/styles";
-import { NavigationNode } from "@shared/types";
+import Icon from "@shared/components/Icon";
+import { s, hover, ellipsis } from "@shared/styles";
+import { IconType, NavigationNode } from "@shared/types";
+import { determineIconType } from "@shared/utils/icon";
 import Document from "~/models/Document";
 import Flex from "~/components/Flex";
-import EmojiIcon from "~/components/Icons/EmojiIcon";
-import { hover } from "~/styles";
+import { SidebarContextType } from "~/components/Sidebar/components/SidebarContext";
 import { sharedDocumentPath } from "~/utils/routeHelpers";
 
 type Props = {
@@ -16,6 +17,7 @@ type Props = {
   document: Document | NavigationNode;
   anchor?: string;
   showCollection?: boolean;
+  sidebarContext?: SidebarContextType;
 };
 
 const DocumentLink = styled(Link)`
@@ -56,9 +58,13 @@ function ReferenceListItem({
   showCollection,
   anchor,
   shareId,
+  sidebarContext,
   ...rest
 }: Props) {
-  const { emoji } = document;
+  const { icon, color } = document;
+  const isEmoji = determineIconType(icon) === IconType.Emoji;
+  const title =
+    document instanceof Document ? document.titleWithDefault : document.title;
 
   return (
     <DocumentLink
@@ -69,15 +75,18 @@ function ReferenceListItem({
         hash: anchor ? `d-${anchor}` : undefined,
         state: {
           title: document.title,
+          sidebarContext,
         },
       }}
       {...rest}
     >
       <Content gap={4} dir="auto">
-        {emoji ? <EmojiIcon emoji={emoji} /> : <DocumentIcon />}
-        <Title>
-          {emoji ? document.title.replace(emoji, "") : document.title}
-        </Title>
+        {icon ? (
+          <Icon value={icon} color={color ?? undefined} />
+        ) : (
+          <DocumentIcon />
+        )}
+        <Title>{isEmoji ? title.replace(icon!, "") : title}</Title>
       </Content>
     </DocumentLink>
   );

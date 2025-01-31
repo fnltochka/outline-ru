@@ -59,6 +59,7 @@ const StyledMoreIcon = styled(MoreIcon)`
 `;
 
 const Container = styled(Flex)<{ $position: "top" | "bottom" }>`
+  overflow: hidden;
   padding-top: ${(props) =>
     props.$position === "top" && Desktop.hasInsetTitlebar() ? 36 : 0}px;
   ${draggableOnDesktop()}
@@ -104,7 +105,6 @@ const Button = styled(Flex)<{
   &:hover,
   &[aria-expanded="true"] {
     color: ${s("sidebarText")};
-    transition: background 100ms ease-in-out;
     background: ${s("sidebarActiveBackground")};
   }
 

@@ -14,7 +14,7 @@ export default class Paragraph extends Node {
       content: "inline*",
       group: "block",
       parseDOM: [{ tag: "p" }],
-      toDOM: () => ["p", 0],
+      toDOM: () => ["p", { dir: "auto" }, 0],
     };
   }
 
@@ -37,7 +37,7 @@ export default class Paragraph extends Node {
       node.childCount === 0 &&
       !state.inTable
     ) {
-      state.write("\\\n");
+      state.write(state.options.softBreak ? "\n" : "\\\n");
     } else {
       state.renderInline(node);
       state.closeBlock(node);

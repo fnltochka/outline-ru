@@ -16,14 +16,17 @@ import {
   Table,
   DataType,
   IsNumeric,
+  BeforeCreate,
   BeforeUpdate,
 } from "sequelize-typescript";
+import { ValidationError } from "@server/errors";
 import FileStorage from "@server/storage/files";
 import { ValidateKey } from "@server/validation";
 import Document from "./Document";
 import Team from "./Team";
 import User from "./User";
 import IdModel from "./base/IdModel";
+import { SkipChangeset } from "./decorators/Changeset";
 import Fix from "./decorators/Fix";
 import Length from "./validators/Length";
 
@@ -57,6 +60,7 @@ class Attachment extends IdModel<
   acl: string;
 
   @Column
+  @SkipChangeset
   lastAccessedAt: Date | null;
 
   @Column
@@ -140,10 +144,17 @@ class Attachment extends IdModel<
 
   // hooks
 
-  @BeforeUpdate
+  @BeforeCreate
   static async sanitizeKey(model: Attachment) {
     model.key = ValidateKey.sanitize(model.key);
     return model;
+  }
+
+  @BeforeUpdate
+  static async preventKeyChange(model: Attachment) {
+    if (model.changed("key")) {
+      throw ValidationError("Cannot change the key of an attachment");
+    }
   }
 
   @BeforeDestroy

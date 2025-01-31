@@ -1,15 +1,13 @@
 import some from "lodash/some";
 import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 import * as React from "react";
-import createAndInsertLink from "@shared/editor/commands/createAndInsertLink";
 import filterExcessSeparators from "@shared/editor/lib/filterExcessSeparators";
-import getMarkRange from "@shared/editor/queries/getMarkRange";
-import isInCode from "@shared/editor/queries/isInCode";
-import isMarkActive from "@shared/editor/queries/isMarkActive";
-import isNodeActive from "@shared/editor/queries/isNodeActive";
+import { getMarkRange } from "@shared/editor/queries/getMarkRange";
+import { isInCode } from "@shared/editor/queries/isInCode";
+import { isMarkActive } from "@shared/editor/queries/isMarkActive";
+import { isNodeActive } from "@shared/editor/queries/isNodeActive";
 import { getColumnIndex, getRowIndex } from "@shared/editor/queries/table";
 import { MenuItem } from "@shared/editor/types";
-import { creatingUrlPrefix } from "@shared/utils/urls";
 import useBoolean from "~/hooks/useBoolean";
 import useDictionary from "~/hooks/useDictionary";
 import useEventListener from "~/hooks/useEventListener";
@@ -26,7 +24,7 @@ import getTableColMenuItems from "../menus/tableCol";
 import getTableRowMenuItems from "../menus/tableRow";
 import { useEditor } from "./EditorContext";
 import FloatingToolbar from "./FloatingToolbar";
-import LinkEditor, { SearchResult } from "./LinkEditor";
+import LinkEditor from "./LinkEditor";
 import ToolbarMenu from "./ToolbarMenu";
 
 type Props = {
@@ -37,12 +35,10 @@ type Props = {
   canUpdate?: boolean;
   onOpen: () => void;
   onClose: () => void;
-  onSearchLink?: (term: string) => Promise<SearchResult[]>;
   onClickLink: (
     href: string,
     event: MouseEvent | React.MouseEvent<HTMLButtonElement>
   ) => void;
-  onCreateLink?: (title: string) => Promise<string>;
 };
 
 function useIsActive(state: EditorState) {
@@ -100,10 +96,10 @@ export default function SelectionToolbar(props: Props) {
   const { view, commands } = useEditor();
   const dictionary = useDictionary();
   const menuRef = React.useRef<HTMLDivElement | null>(null);
-  const isActive = useIsActive(view.state);
+  const isMobile = useMobile();
+  const isActive = useIsActive(view.state) || isMobile;
   const isDragging = useIsDragging();
   const previousIsActive = usePrevious(isActive);
-  const isMobile = useMobile();
 
   React.useEffect(() => {
     // Trigger callbacks when the toolbar is opened or closed
@@ -149,40 +145,6 @@ export default function SelectionToolbar(props: Props) {
     };
   }, [isActive, previousIsActive, readOnly, view]);
 
-  const handleOnCreateLink = async (
-    title: string,
-    nested?: boolean
-  ): Promise<void> => {
-    const { onCreateLink } = props;
-
-    if (!onCreateLink) {
-      return;
-    }
-
-    const { dispatch, state } = view;
-    const { from, to } = state.selection;
-    if (from === to) {
-      // Do not display a selection toolbar for collapsed selections
-      return;
-    }
-
-    const href = `${creatingUrlPrefix}${title}…`;
-    const markType = state.schema.marks.link;
-
-    // Insert a placeholder link
-    dispatch(
-      view.state.tr
-        .removeMark(from, to, markType)
-        .addMark(from, to, markType.create({ href }))
-    );
-
-    return createAndInsertLink(view, title, href, {
-      nested,
-      onCreateLink,
-      dictionary,
-    });
-  };
-
   const handleOnSelectLink = ({
     href,
     from,
@@ -203,8 +165,7 @@ export default function SelectionToolbar(props: Props) {
     );
   };
 
-  const { onCreateLink, isTemplate, rtl, canComment, canUpdate, ...rest } =
-    props;
+  const { isTemplate, rtl, canComment, canUpdate, ...rest } = props;
   const { state } = view;
   const { selection } = state;
   const isDividerSelection = isNodeActive(state.schema.nodes.hr)(state);
@@ -216,8 +177,7 @@ export default function SelectionToolbar(props: Props) {
   const colIndex = getColumnIndex(state);
   const rowIndex = getRowIndex(state);
   const isTableSelection = colIndex !== undefined && rowIndex !== undefined;
-  const link = isMarkActive(state.schema.marks.link)(state);
-  const range = getMarkRange(selection.$from, state.schema.marks.link);
+  const link = getMarkRange(selection.$from, state.schema.marks.link);
   const isImageSelection =
     selection instanceof NodeSelection && selection.node.type.name === "image";
   const isAttachmentSelection =
@@ -230,7 +190,7 @@ export default function SelectionToolbar(props: Props) {
   if (isCodeSelection && selection.empty) {
     items = getCodeMenuItems(state, readOnly, dictionary);
   } else if (isTableSelection) {
-    items = getTableMenuItems(dictionary);
+    items = getTableMenuItems(state, dictionary);
   } else if (colIndex !== undefined) {
     items = getTableColMenuItems(state, colIndex, rtl, dictionary);
   } else if (rowIndex !== undefined) {
@@ -266,7 +226,8 @@ export default function SelectionToolbar(props: Props) {
     return null;
   }
 
-  const showLinkToolbar = link && range;
+  const showLinkToolbar =
+    link && link.from === selection.from && link.to === selection.to;
 
   return (
     <FloatingToolbar
@@ -276,15 +237,13 @@ export default function SelectionToolbar(props: Props) {
     >
       {showLinkToolbar ? (
         <LinkEditor
-          key={`${range.from}-${range.to}`}
+          key={`${link.from}-${link.to}`}
           dictionary={dictionary}
           view={view}
-          mark={range.mark}
-          from={range.from}
-          to={range.to}
+          mark={link.mark}
+          from={link.from}
+          to={link.to}
           onClickLink={props.onClickLink}
-          onSearchLink={props.onSearchLink}
-          onCreateLink={onCreateLink ? handleOnCreateLink : undefined}
           onSelectLink={handleOnSelectLink}
         />
       ) : (

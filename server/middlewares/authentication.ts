@@ -19,6 +19,8 @@ import {
 type AuthenticationOptions = {
   /** Role requuired to access the route. */
   role?: UserRole;
+  /** Type of authentication required to access the route. */
+  type?: AuthenticationType;
   /** Authentication is parsed, but optional. */
   optional?: boolean;
 };
@@ -68,17 +70,23 @@ export default function auth(options: AuthenticationOptions = {}) {
         let apiKey;
 
         try {
-          apiKey = await ApiKey.findOne({
-            where: {
-              secret: token,
-            },
-          });
+          apiKey = await ApiKey.findByToken(token);
         } catch (err) {
           throw AuthenticationError("Invalid API key");
         }
 
         if (!apiKey) {
           throw AuthenticationError("Invalid API key");
+        }
+
+        if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+          throw AuthenticationError("API key is expired");
+        }
+
+        if (!apiKey.canAccess(ctx.request.url)) {
+          throw AuthenticationError(
+            "API key does not have access to this resource"
+          );
         }
 
         user = await User.findByPk(apiKey.userId, {
@@ -94,6 +102,8 @@ export default function auth(options: AuthenticationOptions = {}) {
         if (!user) {
           throw AuthenticationError("Invalid API key");
         }
+
+        await apiKey.updateActiveAt();
       } else {
         type = AuthenticationType.APP;
         user = await getUserForJWT(String(token));
@@ -113,6 +123,10 @@ export default function auth(options: AuthenticationOptions = {}) {
 
       if (options.role && UserRoleHelper.isRoleLower(user.role, options.role)) {
         throw AuthorizationError(`${capitalize(options.role)} role required`);
+      }
+
+      if (options.type && type !== options.type) {
+        throw AuthorizationError(`Invalid authentication type`);
       }
 
       // not awaiting the promises here so that the request is not blocked
@@ -146,6 +160,16 @@ export default function auth(options: AuthenticationOptions = {}) {
         throw err;
       }
     }
+
+    Object.defineProperty(ctx, "context", {
+      get() {
+        return {
+          auth: ctx.state.auth,
+          transaction: ctx.state.transaction,
+          ip: ctx.request.ip,
+        };
+      },
+    });
 
     return next();
   };

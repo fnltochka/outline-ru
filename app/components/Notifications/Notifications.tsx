@@ -3,13 +3,12 @@ import { MarkAsReadIcon } from "outline-icons";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import styled from "styled-components";
-import { s } from "@shared/styles";
+import { s, hover } from "@shared/styles";
 import Notification from "~/models/Notification";
 import { markNotificationsAsRead } from "~/actions/definitions/notifications";
 import useActionContext from "~/hooks/useActionContext";
 import useStores from "~/hooks/useStores";
 import NotificationMenu from "~/menus/NotificationMenu";
-import { hover } from "~/styles";
 import Desktop from "~/utils/Desktop";
 import Empty from "../Empty";
 import ErrorBoundary from "../ErrorBoundary";
@@ -24,13 +23,15 @@ import NotificationListItem from "./NotificationListItem";
 type Props = {
   /** Callback when the notification panel wants to close. */
   onRequestClose: () => void;
+  /** Whether the panel is open or not. */
+  isOpen: boolean;
 };
 
 /**
  * A panel containing a list of notifications and controls to manage them.
  */
 function Notifications(
-  { onRequestClose }: Props,
+  { onRequestClose, isOpen }: Props,
   ref: React.RefObject<HTMLDivElement>
 ) {
   const context = useActionContext();
@@ -58,7 +59,7 @@ function Notifications(
           </Text>
           <Flex gap={8}>
             {notifications.approximateUnreadCount > 0 && (
-              <Tooltip delay={500} content={t("Mark all as read")}>
+              <Tooltip content={t("Mark all as read")}>
                 <Button action={markNotificationsAsRead} context={context}>
                   <MarkAsReadIcon />
                 </Button>
@@ -72,7 +73,7 @@ function Notifications(
             <PaginatedList
               fetch={notifications.fetchPage}
               options={{ archived: false }}
-              items={notifications.orderedData}
+              items={isOpen ? notifications.orderedData : undefined}
               renderItem={(item: Notification) => (
                 <NotificationListItem
                   key={item.id}

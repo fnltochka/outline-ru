@@ -4,7 +4,9 @@ import { StatusFilter as TStatusFilter } from "@shared/types";
 import FilterOptions from "~/components/FilterOptions";
 
 type Props = {
+  /** The selected status filters */
   statusFilter: TStatusFilter[];
+  /** Callback when a status filter is selected */
   onSelect: (option: { statusFilter: TStatusFilter[] }) => void;
 };
 
@@ -14,15 +16,15 @@ const DocumentTypeFilter = ({ statusFilter, onSelect }: Props) => {
     () => [
       {
         key: TStatusFilter.Published,
-        label: t("Published documents"),
+        label: t("Published"),
       },
       {
         key: TStatusFilter.Archived,
-        label: t("Archived documents"),
+        label: t("Archived"),
       },
       {
         key: TStatusFilter.Draft,
-        label: t("Draft documents"),
+        label: t("Drafts"),
       },
     ],
     [t]

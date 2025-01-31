@@ -1,10 +1,11 @@
 import Router from "koa-router";
 import isUndefined from "lodash/isUndefined";
-import { Op, WhereOptions } from "sequelize";
+import { FindOptions, Op, WhereOptions } from "sequelize";
 import { NotFoundError } from "@server/errors";
 import auth from "@server/middlewares/authentication";
+import { transaction } from "@server/middlewares/transaction";
 import validate from "@server/middlewares/validate";
-import { Document, User, Event, Share, Team, Collection } from "@server/models";
+import { Document, User, Share, Team, Collection } from "@server/models";
 import { authorize } from "@server/policies";
 import { presentShare, presentPolicies } from "@server/presenters";
 import { APIContext } from "@server/types";
@@ -116,43 +117,47 @@ router.post(
 
     const collectionIds = await user.collectionIds();
 
+    const options: FindOptions = {
+      where,
+      include: [
+        {
+          model: Document,
+          required: true,
+          paranoid: true,
+          as: "document",
+          where: {
+            collectionId: collectionIds,
+          },
+          include: [
+            {
+              model: Collection.scope({
+                method: ["withMembership", user.id],
+              }),
+              as: "collection",
+            },
+          ],
+        },
+        {
+          model: User,
+          required: true,
+          as: "user",
+        },
+        {
+          model: Team,
+          required: true,
+          as: "team",
+        },
+      ],
+    };
+
     const [shares, total] = await Promise.all([
       Share.findAll({
-        where,
+        ...options,
         order: [[sort, direction]],
-        include: [
-          {
-            model: Document,
-            required: true,
-            paranoid: true,
-            as: "document",
-            where: {
-              collectionId: collectionIds,
-            },
-            include: [
-              {
-                model: Collection.scope({
-                  method: ["withMembership", user.id],
-                }),
-                as: "collection",
-              },
-            ],
-          },
-          {
-            model: User,
-            required: true,
-            as: "user",
-          },
-          {
-            model: Team,
-            required: true,
-            as: "team",
-          },
-        ],
         offset: ctx.state.pagination.offset,
         limit: ctx.state.pagination.limit,
       }),
-      Share.count({ where }),
+      Share.count(options),
     ]);
 
     ctx.body = {
@@ -167,6 +172,7 @@ router.post(
   "shares.create",
   auth(),
   validate(T.SharesCreateSchema),
+  transaction(),
   async (ctx: APIContext<T.SharesCreateReq>) => {
     const { documentId, published, urlId, includeChildDocuments } =
       ctx.input.body;
@@ -185,7 +191,7 @@ router.post(
       authorize(user, "share", document);
     }
 
-    const [share, isCreated] = await Share.findOrCreate({
+    const [share] = await Share.findOrCreateWithCtx(ctx, {
       where: {
         documentId,
         teamId: user.teamId,
@@ -198,24 +204,6 @@ router.post(
         urlId,
       },
     });
-
-    if (isCreated) {
-      await Event.create({
-        name: "shares.create",
-        documentId,
-        collectionId: document.collectionId,
-        modelId: share.id,
-        teamId: user.teamId,
-        actorId: user.id,
-        data: {
-          name: document.title,
-          published,
-          includeChildDocuments,
-          urlId,
-        },
-        ip: ctx.request.ip,
-      });
-    }
 
     share.team = user.team;
     share.user = user;
@@ -232,8 +220,10 @@ router.post(
   "shares.update",
   auth(),
   validate(T.SharesUpdateSchema),
+  transaction(),
   async (ctx: APIContext<T.SharesUpdateReq>) => {
-    const { id, includeChildDocuments, published, urlId } = ctx.input.body;
+    const { id, includeChildDocuments, published, urlId, allowIndexing } =
+      ctx.input.body;
 
     const { user } = ctx.state.auth;
     authorize(user, "share", user.team);
@@ -260,18 +250,11 @@ router.post(
       share.urlId = urlId;
     }
 
-    await share.save();
-    await Event.create({
-      name: "shares.update",
-      documentId: share.documentId,
-      modelId: share.id,
-      teamId: user.teamId,
-      actorId: user.id,
-      data: {
-        published,
-      },
-      ip: ctx.request.ip,
-    });
+    if (allowIndexing !== undefined) {
+      share.allowIndexing = allowIndexing;
+    }
+
+    await share.saveWithCtx(ctx);
 
     ctx.body = {
       data: presentShare(share, user.isAdmin),
@@ -284,6 +267,7 @@ router.post(
   "shares.revoke",
   auth(),
   validate(T.SharesRevokeSchema),
+  transaction(),
   async (ctx: APIContext<T.SharesRevokeReq>) => {
     const { id } = ctx.input.body;
     const { user } = ctx.state.auth;
@@ -294,21 +278,8 @@ router.post(
     }
 
     authorize(user, "revoke", share);
-    const { document } = share;
 
-    await share.revoke(user.id);
-    await Event.create({
-      name: "shares.revoke",
-      documentId: document.id,
-      collectionId: document.collectionId,
-      modelId: share.id,
-      teamId: user.teamId,
-      actorId: user.id,
-      data: {
-        name: document.title,
-      },
-      ip: ctx.request.ip,
-    });
+    await share.revoke(ctx);
 
     ctx.body = {
       success: true,

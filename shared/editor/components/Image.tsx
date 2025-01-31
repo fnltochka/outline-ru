@@ -1,13 +1,14 @@
-import { DownloadIcon } from "outline-icons";
+import { CrossIcon, DownloadIcon, GlobeIcon } from "outline-icons";
 import type { EditorView } from "prosemirror-view";
 import * as React from "react";
 import styled from "styled-components";
+import Flex from "../../components/Flex";
 import { s } from "../../styles";
-import { sanitizeUrl } from "../../utils/urls";
+import { isExternalUrl, sanitizeUrl } from "../../utils/urls";
+import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import { ComponentProps } from "../types";
-import ImageZoom from "./ImageZoom";
+import { ImageZoom } from "./ImageZoom";
 import { ResizeLeft, ResizeRight } from "./ResizeHandle";
-import useComponentSize from "./hooks/useComponentSize";
 import useDragResize from "./hooks/useDragResize";
 
 type Props = ComponentProps & {
@@ -27,30 +28,25 @@ const Image = (props: Props) => {
   const { src, layoutClass } = node.attrs;
   const className = layoutClass ? `image image-${layoutClass}` : "image";
   const [loaded, setLoaded] = React.useState(false);
+  const [error, setError] = React.useState(false);
   const [naturalWidth, setNaturalWidth] = React.useState(node.attrs.width);
   const [naturalHeight, setNaturalHeight] = React.useState(node.attrs.height);
-  const containerBounds = useComponentSize(
-    document.body.querySelector("#full-width-container")
-  );
-  const documentBounds = props.view.dom.getBoundingClientRect();
-  const maxWidth = layoutClass
-    ? documentBounds.width / 3
-    : documentBounds.width;
+  const ref = React.useRef<HTMLDivElement>(null);
   const { width, height, setSize, handlePointerDown, dragging } = useDragResize(
     {
       width: node.attrs.width ?? naturalWidth,
       height: node.attrs.height ?? naturalHeight,
-      minWidth: documentBounds.width * 0.1,
-      maxWidth,
       naturalWidth,
       naturalHeight,
-      gridWidth: documentBounds.width / 20,
+      gridSnap: 5,
       onChangeSize,
+      ref,
     }
   );
 
   const isFullWidth = layoutClass === "full-width";
-  const isResizable = !!props.onChangeSize;
+  const isResizable = !!props.onChangeSize && !error;
+  const isDownloadable = !!props.onDownload && !error;
 
   React.useEffect(() => {
     if (node.attrs.width && node.attrs.width !== width) {
@@ -61,70 +57,85 @@ const Image = (props: Props) => {
     }
   }, [node.attrs.width]);
 
+  const sanitizedSrc = sanitizeUrl(src);
+
+  const handleOpen = React.useCallback(() => {
+    window.open(sanitizedSrc, "_blank");
+  }, [sanitizedSrc]);
+
   const widthStyle = isFullWidth
-    ? { width: containerBounds.width }
+    ? { width: "var(--container-width)" }
     : { width: width || "auto" };
 
-  const containerStyle = isFullWidth
-    ? ({
-        "--offset": `${-(
-          documentBounds.left -
-          containerBounds.left +
-          getPadding(props.view.dom)
-        )}px`,
-      } as React.CSSProperties)
-    : undefined;
-
   return (
-    <div contentEditable={false} className={className} style={containerStyle}>
+    <div contentEditable={false} className={className} ref={ref}>
       <ImageWrapper
         isFullWidth={isFullWidth}
         className={isSelected || dragging ? "ProseMirror-selectednode" : ""}
         onClick={dragging ? undefined : props.onClick}
         style={widthStyle}
       >
-        {!dragging && width > 60 && props.onDownload && (
-          <Button onClick={props.onDownload}>
-            <DownloadIcon />
-          </Button>
+        {!dragging && width > 60 && isDownloadable && (
+          <Actions>
+            {isExternalUrl(src) && (
+              <Button onClick={handleOpen}>
+                <GlobeIcon />
+              </Button>
+            )}
+            <Button onClick={props.onDownload}>
+              <DownloadIcon />
+            </Button>
+          </Actions>
         )}
-        <ImageZoom zoomMargin={24}>
-          <img
-            style={{
-              ...widthStyle,
-              display: loaded ? "block" : "none",
-            }}
-            src={sanitizeUrl(src) ?? ""}
-            onLoad={(ev: React.SyntheticEvent<HTMLImageElement>) => {
-              // For some SVG's Firefox does not provide the naturalWidth, in this
-              // rare case we need to provide a default so that the image can be
-              // seen and is not sized to 0px
-              const nw = (ev.target as HTMLImageElement).naturalWidth || 300;
-              const nh = (ev.target as HTMLImageElement).naturalHeight;
-              setNaturalWidth(nw);
-              setNaturalHeight(nh);
-              setLoaded(true);
-
-              if (!node.attrs.width) {
-                setSize((state) => ({
-                  ...state,
-                  width: nw,
-                }));
-              }
-            }}
-          />
-          {!loaded && width && height && (
+        {error ? (
+          <Error style={widthStyle} className={EditorStyleHelper.imageHandle}>
+            <CrossIcon size={16} /> Image failed to load
+          </Error>
+        ) : (
+          <ImageZoom caption={props.node.attrs.alt}>
             <img
+              className={EditorStyleHelper.imageHandle}
               style={{
                 ...widthStyle,
-                display: "block",
+                display: loaded ? "block" : "none",
+                pointerEvents: dragging ? "none" : "all",
               }}
-              src={`data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
-                getPlaceholder(width, height)
-              )}`}
+              src={sanitizedSrc}
+              onError={() => {
+                setError(true);
+                setLoaded(true);
+              }}
+              onLoad={(ev: React.SyntheticEvent<HTMLImageElement>) => {
+                // For some SVG's Firefox does not provide the naturalWidth, in this
+                // rare case we need to provide a default so that the image can be
+                // seen and is not sized to 0px
+                const nw = (ev.target as HTMLImageElement).naturalWidth || 300;
+                const nh = (ev.target as HTMLImageElement).naturalHeight;
+                setNaturalWidth(nw);
+                setNaturalHeight(nh);
+                setLoaded(true);
+
+                if (!node.attrs.width) {
+                  setSize((state) => ({
+                    ...state,
+                    width: nw,
+                  }));
+                }
+              }}
             />
-          )}
-        </ImageZoom>
+            {!loaded && width && height && (
+              <img
+                style={{
+                  ...widthStyle,
+                  display: "block",
+                }}
+                src={`data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+                  getPlaceholder(width, height)
+                )}`}
+              />
+            )}
+          </ImageZoom>
+        )}
         {isEditable && !isFullWidth && isResizable && (
           <>
             <ResizeLeft
@@ -145,19 +156,39 @@ const Image = (props: Props) => {
   );
 };
 
-function getPadding(element: Element) {
-  const computedStyle = window.getComputedStyle(element, null);
-  return parseFloat(computedStyle.paddingLeft);
-}
-
 function getPlaceholder(width: number, height: number) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" />`;
 }
 
-const Button = styled.button`
+const Error = styled(Flex)`
+  max-width: 100%;
+  color: ${s("textTertiary")};
+  font-size: 14px;
+  background: ${s("backgroundSecondary")};
+  border-radius: 4px;
+  min-width: 33vw;
+  height: 80px;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+`;
+
+const Actions = styled.div`
+  display: flex;
+  align-items: center;
   position: absolute;
+  gap: 1px;
   top: 8px;
   right: 8px;
+  opacity: 0;
+  transition: opacity 150ms ease-in-out;
+
+  &:hover {
+    opacity: 1;
+  }
+`;
+
+const Button = styled.button`
   border: 0;
   margin: 0;
   padding: 0;
@@ -167,9 +198,18 @@ const Button = styled.button`
   width: 24px;
   height: 24px;
   display: inline-block;
-  cursor: var(--pointer);
-  opacity: 0;
+  cursor: var(--pointer) !important;
   transition: opacity 150ms ease-in-out;
+
+  &:first-child:not(:last-child) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  &:last-child:not(:first-child) {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
 
   &:active {
     transform: scale(0.98);
@@ -177,7 +217,6 @@ const Button = styled.button`
 
   &:hover {
     color: ${s("text")};
-    opacity: 1;
   }
 `;
 
@@ -199,7 +238,7 @@ const ImageWrapper = styled.div<{ isFullWidth: boolean }>`
   }
 
   &:hover {
-    ${Button} {
+    ${Actions} {
       opacity: 0.9;
     }
 

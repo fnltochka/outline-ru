@@ -5,9 +5,9 @@ import { useTranslation } from "react-i18next";
 import styled from "styled-components";
 import breakpoint from "styled-components-breakpoint";
 import KeyboardShortcuts from "~/scenes/KeyboardShortcuts";
-import { useEditingFocus } from "~/components/DocumentContext";
 import NudeButton from "~/components/NudeButton";
 import Tooltip from "~/components/Tooltip";
+import useEditingFocus from "~/hooks/useEditingFocus";
 import useStores from "~/hooks/useStores";
 
 function KeyboardShortcutsButton() {
@@ -23,7 +23,7 @@ function KeyboardShortcutsButton() {
   };
 
   return (
-    <Tooltip content={t("Keyboard shortcuts")} shortcut="?" delay={500}>
+    <Tooltip content={t("Keyboard shortcuts")} shortcut="?">
       <Button onClick={handleOpenKeyboardShortcuts} $hidden={isEditingFocus}>
         <KeyboardIcon />
       </Button>
@@ -35,7 +35,7 @@ const Button = styled(NudeButton)<{ $hidden: boolean }>`
   display: none;
   position: fixed;
   bottom: 0;
-  margin: 24px;
+  margin: 20px;
   transition: opacity 500ms ease-in-out;
   ${(props) => props.$hidden && "opacity: 0;"}
 

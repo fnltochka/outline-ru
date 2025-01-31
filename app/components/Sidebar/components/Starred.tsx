@@ -7,14 +7,16 @@ import DelayedMount from "~/components/DelayedMount";
 import Flex from "~/components/Flex";
 import usePaginatedRequest from "~/hooks/usePaginatedRequest";
 import useStores from "~/hooks/useStores";
+import {
+  useDropToCreateStar,
+  useDropToReorderStar,
+} from "../hooks/useDragAndDrop";
 import DropCursor from "./DropCursor";
 import Header from "./Header";
 import PlaceholderCollections from "./PlaceholderCollections";
 import Relative from "./Relative";
 import SidebarLink from "./SidebarLink";
-import StarredContext from "./StarredContext";
 import StarredLink from "./StarredLink";
-import { useDropToCreateStar, useDropToReorderStar } from "./useDragAndDrop";
 
 const STARRED_PAGINATION_LIMIT = 10;
 
@@ -25,8 +27,8 @@ function Starred() {
   const { loading, next, end, error, page } = usePaginatedRequest<Star>(
     stars.fetchPage
   );
-  const [reorderStarMonitor, dropToReorder] = useDropToReorderStar();
-  const [createStarMonitor, dropToStarRef] = useDropToCreateStar();
+  const [reorderStarProps, dropToReorder] = useDropToReorderStar();
+  const [createStarProps, dropToStarRef] = useDropToCreateStar();
 
   React.useEffect(() => {
     if (error) {
@@ -39,48 +41,46 @@ function Starred() {
   }
 
   return (
-    <StarredContext.Provider value={true}>
-      <Flex column>
-        <Header id="starred" title={t("Starred")}>
-          <Relative>
-            {reorderStarMonitor.isDragging && (
-              <DropCursor
-                isActiveDrop={reorderStarMonitor.isOverCursor}
-                innerRef={dropToReorder}
-                position="top"
-              />
-            )}
-            {createStarMonitor.isDragging && (
-              <DropCursor
-                isActiveDrop={createStarMonitor.isOverCursor}
-                innerRef={dropToStarRef}
-                position="top"
-              />
-            )}
-            {stars.orderedData
-              .slice(0, page * STARRED_PAGINATION_LIMIT)
-              .map((star) => (
-                <StarredLink key={star.id} star={star} />
-              ))}
-            {!end && (
-              <SidebarLink
-                onClick={next}
-                label={`${t("Show more")}…`}
-                disabled={stars.isFetching}
-                depth={0}
-              />
-            )}
-            {loading && (
-              <Flex column>
-                <DelayedMount>
-                  <PlaceholderCollections />
-                </DelayedMount>
-              </Flex>
-            )}
-          </Relative>
-        </Header>
-      </Flex>
-    </StarredContext.Provider>
+    <Flex column>
+      <Header id="starred" title={t("Starred")}>
+        <Relative>
+          {reorderStarProps.isDragging && (
+            <DropCursor
+              isActiveDrop={reorderStarProps.isOverCursor}
+              innerRef={dropToReorder}
+              position="top"
+            />
+          )}
+          {createStarProps.isDragging && (
+            <DropCursor
+              isActiveDrop={createStarProps.isOverCursor}
+              innerRef={dropToStarRef}
+              position="top"
+            />
+          )}
+          {stars.orderedData
+            .slice(0, page * STARRED_PAGINATION_LIMIT)
+            .map((star) => (
+              <StarredLink key={star.id} star={star} />
+            ))}
+          {!end && (
+            <SidebarLink
+              onClick={next}
+              label={`${t("Show more")}…`}
+              disabled={stars.isFetching}
+              depth={0}
+            />
+          )}
+          {loading && (
+            <Flex column>
+              <DelayedMount>
+                <PlaceholderCollections />
+              </DelayedMount>
+            </Flex>
+          )}
+        </Relative>
+      </Header>
+    </Flex>
   );
 }
 

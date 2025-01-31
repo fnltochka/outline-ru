@@ -1,6 +1,7 @@
 import debounce from "lodash/debounce";
 import last from "lodash/last";
 import sortBy from "lodash/sortBy";
+import type MermaidUnsafe from "mermaid";
 import { Node } from "prosemirror-model";
 import {
   Plugin,
@@ -12,12 +13,12 @@ import { Decoration, DecorationSet } from "prosemirror-view";
 import { v4 as uuidv4 } from "uuid";
 import { isCode } from "../lib/isCode";
 import { isRemoteTransaction } from "../lib/multiplayer";
-import { findBlockNodes, NodeWithPos } from "../queries/findChildren";
+import { findBlockNodes } from "../queries/findChildren";
+import { NodeWithPos } from "../types";
 
 type MermaidState = {
   decorationSet: DecorationSet;
   isDark: boolean;
-  initialized: boolean;
 };
 
 class Cache {
@@ -36,6 +37,8 @@ class Cache {
   private static maxSize = 20;
   private static data: Map<string, string> = new Map();
 }
+
+let mermaid: typeof MermaidUnsafe;
 
 type RendererFunc = (
   block: { node: Node; pos: number },
@@ -71,25 +74,44 @@ class MermaidRenderer {
       return;
     }
 
+    // Create a temporary element that will render the diagram off-screen. This is necessary
+    // as Mermaid will error if the element is not visible, such as if the heading is collapsed
+    const renderElement = document.createElement("div");
+    renderElement.style.position = "absolute";
+    renderElement.style.left = "-9999px";
+    renderElement.style.top = "-9999px";
+    document.body.appendChild(renderElement);
+
     try {
-      const { default: mermaid } = await import("mermaid");
-      mermaid.mermaidAPI.setConfig({
+      mermaid ??= (await import("mermaid")).default;
+      mermaid.initialize({
+        startOnLoad: true,
+        // TODO: Make dynamic based on the width of the editor or remove in
+        // the future if Mermaid is able to handle this automatically.
+        gantt: { useWidth: 700 },
+        pie: { useWidth: 700 },
+        fontFamily: "inherit",
         theme: isDark ? "dark" : "default",
+        darkMode: isDark,
       });
-      mermaid.render(
+
+      const { svg, bindFunctions } = await mermaid.render(
         `mermaid-diagram-${this.diagramId}`,
         text,
-        (svgCode, bindFunctions) => {
-          this.currentTextContent = text;
-          if (text) {
-            Cache.set(cacheKey, svgCode);
-          }
-          element.classList.remove("parse-error", "empty");
-          element.innerHTML = svgCode;
-          bindFunctions?.(element);
-        },
-        element
+        // If the element is not visible we use an off-screen element to render the diagram
+        element.offsetParent === null ? renderElement : element
       );
+      this.currentTextContent = text;
+
+      // Cache the rendered SVG so we won't need to calculate it again in the same session
+      if (text) {
+        Cache.set(cacheKey, svg);
+      }
+      element.classList.remove("parse-error", "empty");
+      element.innerHTML = svg;
+
+      // Allow the user to interact with the diagram
+      bindFunctions?.(element);
     } catch (error) {
       const isEmpty = block.node.textContent.trim().length === 0;
 
@@ -100,6 +122,8 @@ class MermaidRenderer {
         element.innerText = error;
         element.classList.add("parse-error");
       }
+    } finally {
+      renderElement.remove();
     }
   };
 
@@ -107,7 +131,7 @@ class MermaidRenderer {
     if (this._rendererFunc) {
       return this._rendererFunc;
     }
-    this._rendererFunc = debounce<RendererFunc>(this.renderImmediately, 500);
+    this._rendererFunc = debounce<RendererFunc>(this.renderImmediately, 250);
     return this.renderImmediately;
   }
 
@@ -164,24 +188,6 @@ function getNewState({
       item.node.type.name === name && item.node.attrs.language === "mermaidjs"
   );
 
-  let { initialized } = pluginState;
-  if (blocks.length > 0 && !initialized) {
-    void import("mermaid").then(({ default: mermaid }) => {
-      mermaid.initialize({
-        startOnLoad: true,
-        // TODO: Make dynamic based on the width of the editor or remove in
-        // the future if Mermaid is able to handle this automatically.
-        gantt: {
-          useWidth: 700,
-        },
-        theme: pluginState.isDark ? "dark" : "default",
-        fontFamily: "inherit",
-      });
-    });
-
-    initialized = true;
-  }
-
   blocks.forEach((block) => {
     const existingDecorations = pluginState.decorationSet.find(
       block.pos,
@@ -227,7 +233,6 @@ function getNewState({
   return {
     decorationSet: DecorationSet.create(doc, decorations),
     isDark: pluginState.isDark,
-    initialized,
   };
 }
 
@@ -245,7 +250,6 @@ export default function Mermaid({
         const pluginState: MermaidState = {
           decorationSet: DecorationSet.create(doc, []),
           isDark,
-          initialized: false,
         };
         return getNewState({
           doc,

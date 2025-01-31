@@ -36,12 +36,14 @@ import Fix from "./decorators/Fix";
     ],
   },
 }))
-@Table({ tableName: "group_users", modelName: "group_user", paranoid: true })
+@Table({ tableName: "group_users", modelName: "group_user" })
 @Fix
 class GroupUser extends Model<
   InferAttributes<GroupUser>,
   Partial<InferCreationAttributes<GroupUser>>
 > {
+  static eventNamespace = "groups";
+
   @BelongsTo(() => User, "userId")
   user: User;
 
@@ -62,6 +64,10 @@ class GroupUser extends Model<
   @ForeignKey(() => User)
   @Column(DataType.UUID)
   createdById: string;
+
+  get modelId() {
+    return this.groupId;
+  }
 }
 
 export default GroupUser;

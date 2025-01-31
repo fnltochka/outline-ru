@@ -20,6 +20,7 @@ import {
   DefaultScope,
 } from "sequelize-typescript";
 import { NotificationEventType } from "@shared/types";
+import { getBaseDomain } from "@shared/utils/domains";
 import env from "@server/env";
 import Model from "@server/models/base/Model";
 import Collection from "./Collection";
@@ -30,6 +31,8 @@ import Revision from "./Revision";
 import Team from "./Team";
 import User from "./User";
 import Fix from "./decorators/Fix";
+
+let baseDomain;
 
 @Scopes(() => ({
   withTeam: {
@@ -177,7 +180,7 @@ class Notification extends Model<
   @AfterCreate
   static async createEvent(
     model: Notification,
-    options: SaveOptions<Notification>
+    options: SaveOptions<InferAttributes<Notification>>
   ) {
     const params = {
       name: "notifications.create",
@@ -217,6 +220,47 @@ class Notification extends Model<
    */
   public get pixelUrl() {
     return `${env.URL}/api/notifications.pixel?token=${this.pixelToken}&id=${this.id}`;
+  }
+
+  /**
+   * Returns the message id for the email.
+   *
+   * @param name Username part of the email address.
+   * @returns Email message id.
+   */
+  public static emailMessageId(name: string) {
+    baseDomain ||= getBaseDomain();
+    return `<${name}@${baseDomain}>`;
+  }
+
+  /**
+   * Returns the message reference id which will be used to setup the thread chain in email clients.
+   *
+   * @param notification Notification for which to determine the reference id.
+   * @returns Reference id as an array.
+   */
+  public static async emailReferences(
+    notification: Notification
+  ): Promise<string[] | undefined> {
+    let name: string | undefined;
+
+    switch (notification.event) {
+      case NotificationEventType.PublishDocument:
+      case NotificationEventType.UpdateDocument:
+        name = `${notification.documentId}-updates`;
+        break;
+      case NotificationEventType.MentionedInDocument:
+      case NotificationEventType.MentionedInComment:
+        name = `${notification.documentId}-mentions`;
+        break;
+      case NotificationEventType.CreateComment: {
+        const comment = await Comment.findByPk(notification.commentId);
+        name = `${comment?.parentCommentId ?? comment?.id}-comments`;
+        break;
+      }
+    }
+
+    return name ? [this.emailMessageId(name)] : undefined;
   }
 }
 

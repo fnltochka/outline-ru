@@ -1,59 +1,147 @@
 import { AnimatePresence } from "framer-motion";
 import { observer } from "mobx-react";
+import { ArrowIcon } from "outline-icons";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useRouteMatch } from "react-router-dom";
 import styled from "styled-components";
-import { ProsemirrorData } from "@shared/types";
+import { ProsemirrorData, UserPreference } from "@shared/types";
+import ButtonSmall from "~/components/ButtonSmall";
+import { useDocumentContext } from "~/components/DocumentContext";
 import Empty from "~/components/Empty";
+import Fade from "~/components/Fade";
 import Flex from "~/components/Flex";
 import Scrollable from "~/components/Scrollable";
+import useBoolean from "~/hooks/useBoolean";
 import useCurrentUser from "~/hooks/useCurrentUser";
 import useFocusedComment from "~/hooks/useFocusedComment";
 import useKeyDown from "~/hooks/useKeyDown";
 import usePersistedState from "~/hooks/usePersistedState";
 import usePolicy from "~/hooks/usePolicy";
+import useQuery from "~/hooks/useQuery";
 import useStores from "~/hooks/useStores";
+import { CommentSortOption, CommentSortType } from "~/types";
 import CommentForm from "./CommentForm";
+import CommentSortMenu from "./CommentSortMenu";
 import CommentThread from "./CommentThread";
 import Sidebar from "./SidebarLayout";
 
 function Comments() {
   const { ui, comments, documents } = useStores();
-  const { t } = useTranslation();
   const user = useCurrentUser();
+  const { editor, isEditorInitialized } = useDocumentContext();
+  const { t } = useTranslation();
   const match = useRouteMatch<{ documentSlug: string }>();
+  const params = useQuery();
+  // We need to control scroll behaviour when reaction picker is opened / closed.
+  const [scrollable, enableScroll, disableScroll] = useBoolean(true);
   const document = documents.getByUrl(match.params.documentSlug);
   const focusedComment = useFocusedComment();
   const can = usePolicy(document);
 
-  useKeyDown("Escape", () => document && ui.collapseComments(document?.id));
+  const scrollableRef = React.useRef<HTMLDivElement | null>(null);
+  const prevThreadCount = React.useRef(0);
+  const isAtBottom = React.useRef(true);
+  const [showJumpToRecentBtn, setShowJumpToRecentBtn] = React.useState(false);
+
+  useKeyDown("Escape", () => document && ui.set({ commentsExpanded: false }));
 
   const [draft, onSaveDraft] = usePersistedState<ProsemirrorData | undefined>(
     `draft-${document?.id}-new`,
     undefined
   );
 
-  if (!document) {
+  const sortOption: CommentSortOption = user.getPreference(
+    UserPreference.SortCommentsByOrderInDocument
+  )
+    ? {
+        type: CommentSortType.OrderInDocument,
+        referencedCommentIds: editor?.getComments().map((c) => c.id) ?? [],
+      }
+    : { type: CommentSortType.MostRecent };
+
+  const viewingResolved = params.get("resolved") === "";
+  const threads = !document
+    ? []
+    : viewingResolved
+    ? comments.resolvedThreadsInDocument(document.id, sortOption)
+    : comments.unresolvedThreadsInDocument(document.id, sortOption);
+  const hasComments = threads.length > 0;
+
+  const scrollToBottom = () => {
+    if (scrollableRef.current) {
+      scrollableRef.current.scrollTo({
+        top: scrollableRef.current.scrollHeight,
+      });
+    }
+  };
+
+  const handleScroll = () => {
+    const BUFFER_PX = 50;
+
+    if (scrollableRef.current) {
+      const sh = scrollableRef.current.scrollHeight;
+      const st = scrollableRef.current.scrollTop;
+      const ch = scrollableRef.current.clientHeight;
+      isAtBottom.current = Math.abs(sh - (st + ch)) <= BUFFER_PX;
+
+      if (isAtBottom.current) {
+        setShowJumpToRecentBtn(false);
+      }
+    }
+  };
+
+  React.useEffect(() => {
+    // Handles: 1. on refresh 2. when switching sort setting
+    const readyToDisplay = Boolean(document && isEditorInitialized);
+    if (
+      readyToDisplay &&
+      sortOption.type === CommentSortType.MostRecent &&
+      !viewingResolved
+    ) {
+      scrollToBottom();
+    }
+  }, [sortOption.type, document, isEditorInitialized, viewingResolved]);
+
+  React.useEffect(() => {
+    setShowJumpToRecentBtn(false);
+    if (sortOption.type === CommentSortType.MostRecent && !viewingResolved) {
+      const commentsAdded = threads.length > prevThreadCount.current;
+      if (commentsAdded) {
+        if (isAtBottom.current) {
+          scrollToBottom(); // Remain pinned to bottom on new comments
+        } else {
+          setShowJumpToRecentBtn(true);
+        }
+      }
+    }
+    prevThreadCount.current = threads.length;
+  }, [sortOption.type, threads.length, viewingResolved]);
+
+  if (!document || !isEditorInitialized) {
     return null;
   }
 
-  const threads = comments
-    .threadsInDocument(document.id)
-    .filter((thread) => !thread.isNew || thread.createdById === user.id);
-  const hasComments = threads.length > 0;
-
   return (
     <Sidebar
-      title={t("Comments")}
-      onClose={() => ui.collapseComments(document?.id)}
+      title={
+        <Flex align="center" justify="space-between" auto>
+          <span>{t("Comments")}</span>
+          <CommentSortMenu />
+        </Flex>
+      }
+      onClose={() => ui.set({ commentsExpanded: false })}
       scrollable={false}
     >
       <Scrollable
-        bottomShadow={!focusedComment}
         id="comments"
+        bottomShadow={!focusedComment}
         hiddenScrollbars
         topShadow
+        overflow={scrollable ? "auto" : "hidden"}
+        style={{ overflowX: "hidden" }}
+        ref={scrollableRef}
+        onScroll={handleScroll}
       >
         <Wrapper $hasComments={hasComments}>
           {hasComments ? (
@@ -64,17 +152,33 @@ function Comments() {
                 document={document}
                 recessed={!!focusedComment && focusedComment.id !== thread.id}
                 focused={focusedComment?.id === thread.id}
+                enableScroll={enableScroll}
+                disableScroll={disableScroll}
               />
             ))
           ) : (
             <NoComments align="center" justify="center" auto>
-              <PositionedEmpty>{t("No comments yet")}</PositionedEmpty>
+              <PositionedEmpty>
+                {viewingResolved
+                  ? t("No resolved comments")
+                  : t("No comments yet")}
+              </PositionedEmpty>
             </NoComments>
+          )}
+          {showJumpToRecentBtn && (
+            <Fade>
+              <JumpToRecent onClick={scrollToBottom}>
+                <Flex align="center">
+                  {t("New comments")}&nbsp;
+                  <ArrowDownIcon size={20} />
+                </Flex>
+              </JumpToRecent>
+            </Fade>
           )}
         </Wrapper>
       </Scrollable>
       <AnimatePresence initial={false}>
-        {!focusedComment && can.comment && (
+        {!focusedComment && can.comment && !viewingResolved && (
           <NewCommentForm
             draft={draft}
             onSaveDraft={onSaveDraft}
@@ -103,8 +207,25 @@ const NoComments = styled(Flex)`
 `;
 
 const Wrapper = styled.div<{ $hasComments: boolean }>`
-  padding-bottom: ${(props) => (props.$hasComments ? "50vh" : "0")};
   height: ${(props) => (props.$hasComments ? "auto" : "100%")};
+`;
+
+const JumpToRecent = styled(ButtonSmall)`
+  position: sticky;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.8;
+  border-radius: 12px;
+  padding: 0 4px;
+
+  &:hover {
+    opacity: 1;
+  }
+`;
+
+const ArrowDownIcon = styled(ArrowIcon)`
+  transform: rotate(90deg);
 `;
 
 const NewCommentForm = styled(CommentForm)<{ dir?: "ltr" | "rtl" }>`

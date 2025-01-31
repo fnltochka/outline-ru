@@ -115,11 +115,16 @@ router.post(
   "integrations.update",
   auth({ role: UserRole.Admin }),
   validate(T.IntegrationsUpdateSchema),
+  transaction(),
   async (ctx: APIContext<T.IntegrationsUpdateReq>) => {
     const { id, events, settings } = ctx.input.body;
     const { user } = ctx.state.auth;
+    const { transaction } = ctx.state;
 
-    const integration = await Integration.findByPk(id);
+    const integration = await Integration.findByPk(id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
     authorize(user, "update", integration);
 
     if (integration.type === IntegrationType.Post) {
@@ -130,7 +135,7 @@ router.post(
 
     integration.settings = settings;
 
-    await integration.save();
+    await integration.save({ transaction });
 
     ctx.body = {
       data: presentIntegration(integration),
@@ -152,21 +157,16 @@ router.post(
     const integration = await Integration.findByPk(id, {
       rejectOnEmpty: true,
       transaction,
+      lock: transaction.LOCK.UPDATE,
     });
     authorize(user, "delete", integration);
 
     await integration.destroy({ transaction });
 
-    await Event.create(
-      {
-        name: "integrations.delete",
-        modelId: integration.id,
-        teamId: integration.teamId,
-        actorId: user.id,
-        ip: ctx.request.ip,
-      },
-      { transaction }
-    );
+    await Event.createFromContext(ctx, {
+      name: "integrations.delete",
+      modelId: integration.id,
+    });
 
     ctx.body = {
       success: true,

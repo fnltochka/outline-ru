@@ -21,6 +21,7 @@ export const nameToEmoji: Record<string, string> = Object.values(
   (data as EmojiMartData).emojis
 ).reduce((acc, emoji) => {
   const convertedId = snakeCase(emoji.id);
+  // @ts-expect-error emojiMartToGemoji is a valid map
   acc[emojiMartToGemoji[convertedId] ?? convertedId] = emoji.skins[0].native;
   return acc;
 }, {});
@@ -32,7 +33,7 @@ export const nameToEmoji: Record<string, string> = Object.values(
  * @returns The emoji character
  */
 export const getEmojiFromName = (name: string) =>
-  nameToEmoji[name.replace(/:/g, "")];
+  nameToEmoji[name.replace(/:/g, "")] ?? "?";
 
 /**
  * Get the emoji shortcode for a given emoji character.

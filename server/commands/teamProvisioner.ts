@@ -3,7 +3,6 @@ import env from "@server/env";
 import {
   DomainNotAllowedError,
   InvalidAuthenticationError,
-  MaximumTeamsError,
   TeamPendingDeletionError,
 } from "@server/errors";
 import { traceFunction } from "@server/logging/tracing";
@@ -82,15 +81,15 @@ async function teamProvisioner({
       throw InvalidAuthenticationError();
     }
 
-    // This team has never been seen before, if self hosted the logic is different
-    // to the multi-tenant version, we want to restrict to a single team that MAY
-    // have multiple authentication providers
-    const team = await Team.findOne();
+    // This team + auth provider combination has not been seen before in self hosted
+    const team = await Team.findByPk(teamId, {
+      rejectOnEmpty: true,
+    });
 
     // If the self-hosted installation has a single team and the domain for the
     // new team is allowed then assign the authentication provider to the
     // existing team
-    if (team && domain) {
+    if (domain) {
       if (await team.isDomainAllowed(domain)) {
         authP = await team.$create<AuthenticationProvider>(
           "authenticationProvider",
@@ -101,14 +100,10 @@ async function teamProvisioner({
           team,
           isNewTeam: false,
         };
-      } else {
-        throw DomainNotAllowedError();
       }
+      throw DomainNotAllowedError();
     }
-
-    if (team) {
-      throw MaximumTeamsError();
-    }
+    throw InvalidAuthenticationError();
   }
 
   // We cannot find an existing team, so we create a new one

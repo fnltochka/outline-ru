@@ -1,10 +1,12 @@
-import { NotificationEventType } from "@shared/types";
+import { MentionType, NotificationEventType } from "@shared/types";
 import subscriptionCreator from "@server/commands/subscriptionCreator";
+import { createContext } from "@server/context";
 import { Comment, Document, Notification, User } from "@server/models";
 import NotificationHelper from "@server/models/helpers/NotificationHelper";
-import ProsemirrorHelper from "@server/models/helpers/ProsemirrorHelper";
+import { ProsemirrorHelper } from "@server/models/helpers/ProsemirrorHelper";
 import { sequelize } from "@server/storage/database";
 import { CommentEvent } from "@server/types";
+import { canUserAccessDocument } from "@server/utils/policies";
 import BaseTask, { TaskPriority } from "./BaseTask";
 
 export default class CommentCreatedNotificationsTask extends BaseTask<CommentEvent> {
@@ -25,17 +27,21 @@ export default class CommentCreatedNotificationsTask extends BaseTask<CommentEve
     // if they haven't previously had one.
     await sequelize.transaction(async (transaction) => {
       await subscriptionCreator({
-        user: comment.createdBy,
+        ctx: createContext({
+          user: comment.createdBy,
+          authType: event.authType,
+          ip: event.ip,
+          transaction,
+        }),
         documentId: document.id,
         event: "documents.update",
         resubscribe: false,
-        transaction,
-        ip: event.ip,
       });
     });
 
     const mentions = ProsemirrorHelper.parseMentions(
-      ProsemirrorHelper.toProsemirror(comment.data)
+      ProsemirrorHelper.toProsemirror(comment.data),
+      { type: MentionType.User }
     );
     const userIdsMentioned: string[] = [];
 
@@ -47,11 +53,13 @@ export default class CommentCreatedNotificationsTask extends BaseTask<CommentEve
       const recipient = await User.findByPk(mention.modelId);
 
       if (
+        mention.actorId &&
         recipient &&
         recipient.id !== mention.actorId &&
         recipient.subscribedToEventType(
           NotificationEventType.MentionedInComment
-        )
+        ) &&
+        (await canUserAccessDocument(recipient, document.id))
       ) {
         await Notification.create({
           event: NotificationEventType.MentionedInComment,

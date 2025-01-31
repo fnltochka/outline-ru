@@ -11,35 +11,35 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList as List } from "react-window";
-import scrollIntoView from "smooth-scroll-into-view-if-needed";
+import scrollIntoView from "scroll-into-view-if-needed";
 import styled, { useTheme } from "styled-components";
 import breakpoint from "styled-components-breakpoint";
+import Icon from "@shared/components/Icon";
 import { NavigationNode } from "@shared/types";
+import { isModKey } from "@shared/utils/keyboard";
 import DocumentExplorerNode from "~/components/DocumentExplorerNode";
 import DocumentExplorerSearchResult from "~/components/DocumentExplorerSearchResult";
 import Flex from "~/components/Flex";
 import CollectionIcon from "~/components/Icons/CollectionIcon";
-import EmojiIcon from "~/components/Icons/EmojiIcon";
 import { Outline } from "~/components/Input";
 import InputSearch from "~/components/InputSearch";
 import Text from "~/components/Text";
 import useMobile from "~/hooks/useMobile";
 import useStores from "~/hooks/useStores";
-import { isModKey } from "~/utils/keyboard";
 import { ancestors, descendants } from "~/utils/tree";
 
 type Props = {
   /** Action taken upon submission of selected item, could be publish, move etc. */
   onSubmit: () => void;
-
   /** A side-effect of item selection */
   onSelect: (item: NavigationNode | null) => void;
-
   /** Items to be shown in explorer */
   items: NavigationNode[];
+  /** Automatically expand to and select item with the given id */
+  defaultValue?: string;
 };
 
-function DocumentExplorer({ onSubmit, onSelect, items }: Props) {
+function DocumentExplorer({ onSubmit, onSelect, items, defaultValue }: Props) {
   const isMobile = useMobile();
   const { collections, documents } = useStores();
   const { t } = useTranslation();
@@ -47,12 +47,25 @@ function DocumentExplorer({ onSubmit, onSelect, items }: Props) {
 
   const [searchTerm, setSearchTerm] = React.useState<string>();
   const [selectedNode, selectNode] = React.useState<NavigationNode | null>(
-    null
+    () => {
+      const node =
+        defaultValue && items.find((item) => item.id === defaultValue);
+      return node || null;
+    }
   );
   const [initialScrollOffset, setInitialScrollOffset] =
     React.useState<number>(0);
   const [activeNode, setActiveNode] = React.useState<number>(0);
-  const [expandedNodes, setExpandedNodes] = React.useState<string[]>([]);
+  const [expandedNodes, setExpandedNodes] = React.useState<string[]>(() => {
+    if (defaultValue) {
+      const node = items.find((item) => item.id === defaultValue);
+      if (node) {
+        return ancestors(node).map((node) => node.id);
+      }
+    }
+    return [];
+  });
+
   const [itemRefs, setItemRefs] = React.useState<
     React.RefObject<HTMLSpanElement>[]
   >([]);
@@ -93,6 +106,15 @@ function DocumentExplorer({ onSubmit, onSelect, items }: Props) {
   React.useEffect(() => {
     onSelect(selectedNode);
   }, [selectedNode, onSelect]);
+
+  React.useEffect(() => {
+    if (defaultValue && selectedNode && listRef) {
+      const index = nodes.findIndex((node) => node.id === selectedNode.id);
+      if (index > 0) {
+        setTimeout(() => listRef.current?.scrollToItem(index, "center"), 50);
+      }
+    }
+  }, []);
 
   function getNodes() {
     function includeDescendants(item: NavigationNode): NavigationNode[] {
@@ -216,25 +238,30 @@ function DocumentExplorer({ onSubmit, onSelect, items }: Props) {
     }) => {
       const node = data[index];
       const isCollection = node.type === "collection";
-      let icon, title: string, emoji: string | undefined, path;
+      let renderedIcon,
+        title: string,
+        icon: string | undefined,
+        color: string | undefined,
+        path;
 
       if (isCollection) {
         const col = collections.get(node.collectionId as string);
-        icon = col && (
+        renderedIcon = col && (
           <CollectionIcon collection={col} expanded={isExpanded(index)} />
         );
         title = node.title;
       } else {
         const doc = documents.get(node.id);
-        emoji = doc?.emoji ?? node.emoji;
+        icon = doc?.icon ?? node.icon ?? node.emoji;
+        color = doc?.color ?? node.color;
         title = doc?.title ?? node.title;
 
-        if (emoji) {
-          icon = <EmojiIcon emoji={emoji} />;
+        if (icon) {
+          renderedIcon = <Icon value={icon} color={color} />;
         } else if (doc?.isStarred) {
-          icon = <StarredIcon color={theme.yellow} />;
+          renderedIcon = <StarredIcon color={theme.yellow} />;
         } else {
-          icon = <DocumentIcon color={theme.textSecondary} />;
+          renderedIcon = <DocumentIcon color={theme.textSecondary} />;
         }
 
         path = ancestors(node)
@@ -254,7 +281,7 @@ function DocumentExplorer({ onSubmit, onSelect, items }: Props) {
           }}
           onPointerMove={() => setActiveNode(index)}
           onClick={() => toggleSelect(index)}
-          icon={icon}
+          icon={renderedIcon}
           title={title}
           path={path}
         />
@@ -275,7 +302,7 @@ function DocumentExplorer({ onSubmit, onSelect, items }: Props) {
           selected={isSelected(index)}
           active={activeNode === index}
           expanded={isExpanded(index)}
-          icon={icon}
+          icon={renderedIcon}
           title={title}
           depth={node.depth as number}
           hasChildren={hasChildren(index)}

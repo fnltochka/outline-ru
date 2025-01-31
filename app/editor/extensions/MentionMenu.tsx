@@ -7,10 +7,10 @@ import MentionMenu from "../components/MentionMenu";
 export default class MentionMenuExtension extends Suggestion {
   get defaultOptions() {
     return {
-      // ported from https://github.com/tc39/proposal-regexp-unicode-property-escapes#unicode-aware-version-of-w
-      openRegex: /(?:^|\s|\()@([\p{L}\p{M}\d]+)?$/u,
-      closeRegex: /(?:^|\s|\()@(([\p{L}\p{M}\d]*\s+)|(\s+[\p{L}\p{M}\d]+))$/u,
-      enabledInTable: true,
+      trigger: "@",
+      allowSpaces: true,
+      requireSearchTerm: false,
+      enabledInCode: false,
     };
   }
 
@@ -21,6 +21,7 @@ export default class MentionMenuExtension extends Suggestion {
   widget = ({ rtl }: WidgetProps) => (
     <MentionMenu
       rtl={rtl}
+      trigger={this.options.trigger}
       isActive={this.state.open}
       search={this.state.query}
       onClose={action(() => {

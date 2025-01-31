@@ -1,8 +1,6 @@
 import Router from "koa-router";
 import { Sequelize } from "sequelize";
 import starCreator from "@server/commands/starCreator";
-import starDestroyer from "@server/commands/starDestroyer";
-import starUpdater from "@server/commands/starUpdater";
 import auth from "@server/middlewares/authentication";
 import { transaction } from "@server/middlewares/transaction";
 import validate from "@server/middlewares/validate";
@@ -46,12 +44,11 @@ router.post(
     }
 
     const star = await starCreator({
+      ctx,
       user,
       documentId,
       collectionId,
-      ip: ctx.request.ip,
       index,
-      transaction,
     });
 
     ctx.body = {
@@ -112,7 +109,7 @@ router.post(
       data: {
         stars: stars.map(presentStar),
         documents: await Promise.all(
-          documents.map((document: Document) => presentDocument(document))
+          documents.map((document: Document) => presentDocument(ctx, document))
         ),
       },
       policies,
@@ -124,19 +121,19 @@ router.post(
   "stars.update",
   auth(),
   validate(T.StarsUpdateSchema),
+  transaction(),
   async (ctx: APIContext<T.StarsUpdateReq>) => {
     const { id, index } = ctx.input.body;
-
     const { user } = ctx.state.auth;
-    let star = await Star.findByPk(id);
+    const { transaction } = ctx.state;
+
+    const star = await Star.findByPk(id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
     authorize(user, "update", star);
 
-    star = await starUpdater({
-      user,
-      star,
-      ip: ctx.request.ip,
-      index,
-    });
+    await star.updateWithCtx(ctx, { index });
 
     ctx.body = {
       data: presentStar(star),
@@ -149,14 +146,19 @@ router.post(
   "stars.delete",
   auth(),
   validate(T.StarsDeleteSchema),
+  transaction(),
   async (ctx: APIContext<T.StarsDeleteReq>) => {
     const { id } = ctx.input.body;
-
     const { user } = ctx.state.auth;
-    const star = await Star.findByPk(id);
+    const { transaction } = ctx.state;
+
+    const star = await Star.findByPk(id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
     authorize(user, "delete", star);
 
-    await starDestroyer({ user, star, ip: ctx.request.ip });
+    await star.destroyWithCtx(ctx);
 
     ctx.body = {
       success: true,

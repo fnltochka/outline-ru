@@ -1,4 +1,3 @@
-import invariant from "invariant";
 import Router from "koa-router";
 import { UserRole } from "@shared/types";
 import teamCreator from "@server/commands/teamCreator";
@@ -69,16 +68,18 @@ router.post(
   rateLimiter(RateLimiterStrategy.FivePerHour),
   auth(),
   async (ctx: APIContext) => {
+    if (!emailEnabled) {
+      throw ValidationError("Email support is not setup for this instance");
+    }
+
     const { user } = ctx.state.auth;
     const { team } = user;
     authorize(user, "delete", team);
 
-    if (emailEnabled) {
-      await new ConfirmTeamDeleteEmail({
-        to: user.email,
-        deleteConfirmationCode: team.getDeleteConfirmationCode(user),
-      }).schedule();
-    }
+    await new ConfirmTeamDeleteEmail({
+      to: user.email,
+      deleteConfirmationCode: team.getDeleteConfirmationCode(user),
+    }).schedule();
 
     ctx.body = {
       success: true,
@@ -145,11 +146,6 @@ router.post(
         name: provider.name,
         providerId: provider.providerId,
       })
-    );
-
-    invariant(
-      authenticationProviders?.length,
-      "Team must have at least one authentication provider"
     );
 
     const team = await teamCreator({

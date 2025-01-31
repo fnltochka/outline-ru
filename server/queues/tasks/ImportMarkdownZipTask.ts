@@ -1,11 +1,14 @@
+import path from "path";
 import fs from "fs-extra";
 import escapeRegExp from "lodash/escapeRegExp";
 import mime from "mime-types";
 import { v4 as uuidv4 } from "uuid";
 import documentImporter from "@server/commands/documentImporter";
+import { createContext } from "@server/context";
 import Logger from "@server/logging/Logger";
 import { FileOperation, User } from "@server/models";
 import { Buckets } from "@server/models/helpers/AttachmentHelper";
+import { sequelize } from "@server/storage/database";
 import ImportHelper, { FileTreeNode } from "@server/utils/ImportHelper";
 import ImportTask, { StructuredImportData } from "./ImportTask";
 
@@ -43,6 +46,8 @@ export default class ImportMarkdownZipTask extends ImportTask {
       attachments: [],
     };
 
+    const docPathToIdMap = new Map<string, string>();
+
     async function parseNodeChildren(
       children: FileTreeNode[],
       collectionId: string,
@@ -79,16 +84,19 @@ export default class ImportMarkdownZipTask extends ImportTask {
             return;
           }
 
-          const { title, emoji, text } = await documentImporter({
-            mimeType: "text/markdown",
-            fileName: child.name,
-            content:
-              child.children.length > 0
-                ? ""
-                : await fs.readFile(child.path, "utf8"),
-            user,
-            ip: user.lastActiveIp || undefined,
-          });
+          const { title, icon, text } = await sequelize.transaction(
+            async (transaction) =>
+              documentImporter({
+                mimeType: "text/markdown",
+                fileName: child.name,
+                content:
+                  child.children.length > 0
+                    ? ""
+                    : await fs.readFile(child.path, "utf8"),
+                user,
+                ctx: createContext({ user, transaction }),
+              })
+          );
 
           const existingDocumentIndex = output.documents.findIndex(
             (doc) =>
@@ -102,6 +110,8 @@ export default class ImportMarkdownZipTask extends ImportTask {
           // When there is a file and a folder with the same name this handles
           // the case by combining the two into one document with nested children
           if (existingDocument) {
+            docPathToIdMap.set(child.path, existingDocument.id);
+
             if (existingDocument.text === "") {
               output.documents[existingDocumentIndex].text = text;
             }
@@ -112,10 +122,12 @@ export default class ImportMarkdownZipTask extends ImportTask {
               existingDocument.id
             );
           } else {
+            docPathToIdMap.set(child.path, id);
+
             output.documents.push({
               id,
               title,
-              emoji,
+              icon,
               text,
               collectionId,
               parentDocumentId,
@@ -145,9 +157,9 @@ export default class ImportMarkdownZipTask extends ImportTask {
       }
     }
 
-    // Check all of the attachments we've created against urls in the text
-    // and replace them out with attachment redirect urls before continuing.
     for (const document of output.documents) {
+      // Check all of the attachments we've created against urls in the text
+      // and replace them out with attachment redirect urls before continuing.
       for (const attachment of output.attachments) {
         const encodedPath = encodeURI(attachment.path);
 
@@ -164,10 +176,33 @@ export default class ImportMarkdownZipTask extends ImportTask {
         document.text = document.text
           .replace(new RegExp(escapeRegExp(encodedPath), "g"), reference)
           .replace(
-            new RegExp(`/?${escapeRegExp(normalizedAttachmentPath)}`, "g"),
+            new RegExp(`\.?/?${escapeRegExp(normalizedAttachmentPath)}`, "g"),
             reference
           );
       }
+
+      const basePath = path.dirname(document.path);
+
+      // check internal document links in the text and replace them with placeholders.
+      // When persisting, the placeholders will be replaced with the right urls.
+      const internalLinks = [
+        ...document.text.matchAll(/\[[^\]]+\]\(([^)]+\.md)\)/g),
+      ];
+
+      internalLinks.forEach((match) => {
+        const referredDocPath = match[1];
+        const normalizedDocPath = decodeURI(
+          path.normalize(`${basePath}/${referredDocPath}`)
+        );
+
+        const referredDocId = docPathToIdMap.get(normalizedDocPath);
+        if (referredDocId) {
+          document.text = document.text.replace(
+            referredDocPath,
+            `<<${referredDocId}>>`
+          );
+        }
+      });
     }
 
     return output;

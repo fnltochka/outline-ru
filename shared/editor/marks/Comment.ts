@@ -2,9 +2,11 @@ import { toggleMark } from "prosemirror-commands";
 import { MarkSpec, MarkType, Schema, Mark as PMMark } from "prosemirror-model";
 import { Command, Plugin } from "prosemirror-state";
 import { v4 as uuidv4 } from "uuid";
-import collapseSelection from "../commands/collapseSelection";
-import chainTransactions from "../lib/chainTransactions";
-import isMarkActive from "../queries/isMarkActive";
+import { addMark } from "../commands/addMark";
+import { collapseSelection } from "../commands/collapseSelection";
+import { chainTransactions } from "../lib/chainTransactions";
+import { isMarkActive } from "../queries/isMarkActive";
+import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import Mark from "./Mark";
 
 export default class Comment extends Mark {
@@ -14,14 +16,24 @@ export default class Comment extends Mark {
 
   get schema(): MarkSpec {
     return {
+      // Allow multiple comments to overlap
+      excludes: "",
       attrs: {
         id: {},
         userId: {},
+        resolved: {
+          default: false,
+          validate: "boolean",
+        },
+        draft: {
+          default: false,
+          validate: "boolean",
+        },
       },
       inclusive: false,
       parseDOM: [
         {
-          tag: "span.comment-marker",
+          tag: `.${EditorStyleHelper.comment}`,
           getAttrs: (dom: HTMLSpanElement) => {
             // Ignore comment markers from other documents
             const documentId = dom.getAttribute("data-document-id");
@@ -32,6 +44,8 @@ export default class Comment extends Mark {
             return {
               id: dom.getAttribute("id")?.replace("comment-", ""),
               userId: dom.getAttribute("data-user-id"),
+              resolved: !!dom.getAttribute("data-resolved"),
+              draft: !!dom.getAttribute("data-draft"),
             };
           },
         },
@@ -39,8 +53,10 @@ export default class Comment extends Mark {
       toDOM: (node) => [
         "span",
         {
-          class: "comment-marker",
+          class: EditorStyleHelper.comment,
           id: `comment-${node.attrs.id}`,
+          "data-resolved": node.attrs.resolved ? "true" : undefined,
+          "data-draft": node.attrs.draft ? "true" : undefined,
           "data-user-id": node.attrs.userId,
           "data-document-id": this.editor?.props.id,
         },
@@ -56,7 +72,11 @@ export default class Comment extends Mark {
     return this.options.onCreateCommentMark
       ? {
           "Mod-Alt-m": (state, dispatch) => {
-            if (isMarkActive(state.schema.marks.comment)(state)) {
+            if (
+              isMarkActive(state.schema.marks.comment, {
+                resolved: false,
+              })(state)
+            ) {
               return false;
             }
 
@@ -64,6 +84,7 @@ export default class Comment extends Mark {
               toggleMark(type, {
                 id: uuidv4(),
                 userId: this.options.userId,
+                draft: true,
               }),
               collapseSelection()
             )(state, dispatch);
@@ -77,14 +98,23 @@ export default class Comment extends Mark {
   commands({ type }: { type: MarkType; schema: Schema }) {
     return this.options.onCreateCommentMark
       ? (): Command => (state, dispatch) => {
-          if (isMarkActive(state.schema.marks.comment)(state)) {
+          if (
+            isMarkActive(
+              state.schema.marks.comment,
+              {
+                resolved: false,
+              },
+              { exact: true }
+            )(state)
+          ) {
             return false;
           }
 
           chainTransactions(
-            toggleMark(type, {
+            addMark(type, {
               id: uuidv4(),
               userId: this.options.userId,
+              draft: true,
             }),
             collapseSelection()
           )(state, dispatch);
@@ -152,13 +182,20 @@ export default class Comment extends Mark {
                 return false;
               }
 
-              const comment = event.target.closest(".comment-marker");
+              const comment = event.target.closest(
+                `.${EditorStyleHelper.comment}`
+              );
               if (!comment) {
                 return false;
               }
 
               const commentId = comment.id.replace("comment-", "");
-              if (commentId) {
+              const resolved = comment.getAttribute("data-resolved");
+              const draftByUser =
+                comment.getAttribute("data-draft") &&
+                comment.getAttribute("data-user-id") === this.options.userId;
+
+              if ((commentId && !resolved) || draftByUser) {
                 this.options?.onClickCommentMark?.(commentId);
               }
 

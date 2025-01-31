@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import styled from "styled-components";
 import { UserRole } from "@shared/types";
+import { parseEmail } from "@shared/utils/email";
 import { UserValidation } from "@shared/validations";
 import Button from "~/components/Button";
 import Flex from "~/components/Flex";
@@ -41,7 +42,7 @@ function Invite({ onSubmit }: Props) {
   const user = useCurrentUser();
   const team = useCurrentTeam();
   const { t } = useTranslation();
-  const predictedDomain = user.email.split("@")[1];
+  const predictedDomain = parseEmail(user.email).domain;
   const can = usePolicy(team);
   const [role, setRole] = React.useState<UserRole>(UserRole.Member);
 
@@ -51,12 +52,12 @@ function Invite({ onSubmit }: Props) {
       setIsSaving(true);
 
       try {
-        const data = await users.invite(
+        const response = await users.invite(
           invites.filter((i) => i.email).map((memo) => ({ ...memo, role }))
         );
         onSubmit();
 
-        if (data.sent.length > 0) {
+        if (response.length > 0) {
           toast.success(t("We sent out your invites!"));
         } else {
           toast.message(t("Those email addresses are already invited"));
@@ -70,10 +71,11 @@ function Invite({ onSubmit }: Props) {
     [onSubmit, invites, role, t, users]
   );
 
-  const handleChange = React.useCallback((ev, index) => {
+  const handleChange = React.useCallback((ev, index: number) => {
     setInvites((prevInvites) => {
       const newInvites = [...prevInvites];
-      newInvites[index][ev.target.name] = ev.target.value;
+      newInvites[index][ev.target.name as keyof InviteRequest] =
+        ev.target.value;
       return newInvites;
     });
   }, []);
@@ -125,7 +127,7 @@ function Invite({ onSubmit }: Props) {
           <Trans>{{ collectionCount }} collections</Trans>
         </strong>
       </Tooltip>
-      .
+      .{" "}
     </span>
   ) : undefined;
 
@@ -204,7 +206,7 @@ function Invite({ onSubmit }: Props) {
                   labelHidden={index !== 0}
                   onKeyDown={handleKeyDown}
                   onChange={(ev) => handleChange(ev, index)}
-                  placeholder={`example@${predictedDomain}`}
+                  placeholder={`name@${predictedDomain}`}
                   value={invite.email}
                   required={index === 0}
                   autoFocus
@@ -254,6 +256,8 @@ function Invite({ onSubmit }: Props) {
 
 const StyledInput = styled(Input)`
   margin-bottom: -4px;
+  min-width: 0;
+  flex-shrink: 1;
 `;
 
 export default observer(Invite);

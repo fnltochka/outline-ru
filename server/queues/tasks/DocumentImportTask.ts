@@ -1,6 +1,7 @@
 import { SourceMetadata } from "@shared/types";
 import documentCreator from "@server/commands/documentCreator";
 import documentImporter from "@server/commands/documentImporter";
+import { createContext } from "@server/context";
 import { User } from "@server/models";
 import { sequelize } from "@server/storage/database";
 import FileStorage from "@server/storage/files";
@@ -43,27 +44,25 @@ export default class DocumentImportTask extends BaseTask<Props> {
           transaction,
         });
 
-        const { text, state, title, emoji } = await documentImporter({
+        const { text, state, title, icon } = await documentImporter({
           user,
           fileName: sourceMetadata.fileName,
           mimeType: sourceMetadata.mimeType,
           content,
-          ip,
-          transaction,
+          ctx: createContext({ user, transaction, ip }),
         });
 
         return documentCreator({
           sourceMetadata,
           title,
-          emoji,
+          icon,
           text,
           state,
           publish,
           collectionId,
           parentDocumentId,
           user,
-          ip,
-          transaction,
+          ctx: createContext({ user, transaction, ip }),
         });
       });
       return { documentId: document.id };
