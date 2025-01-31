@@ -73,6 +73,10 @@ export const languageOptions: LanguageOption[] = [
     value: "fa_IR",
   },
   {
+    label: "Pусский (Russian)",
+    value: "ru_RU",
+  },
+  {
     label: "Svenska (Swedish)",
     value: "sv_SE",
   },
