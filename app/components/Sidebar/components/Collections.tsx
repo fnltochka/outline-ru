@@ -10,6 +10,7 @@ import Error from "~/components/List/Error";
 import PaginatedList from "~/components/PaginatedList";
 import { createCollection } from "~/actions/definitions/collections";
 import useStores from "~/hooks/useStores";
+import { DragObject } from "../hooks/useDragAndDrop";
 import DraggableCollectionLink from "./DraggableCollectionLink";
 import DropCursor from "./DropCursor";
 import Header from "./Header";
@@ -17,7 +18,6 @@ import PlaceholderCollections from "./PlaceholderCollections";
 import Relative from "./Relative";
 import SidebarAction from "./SidebarAction";
 import SidebarContext from "./SidebarContext";
-import { DragObject } from "./SidebarLink";
 
 function Collections() {
   const { documents, collections } = useStores();
@@ -54,7 +54,7 @@ function Collections() {
       <Flex column>
         <Header id="collections" title={t("Collections")}>
           <Relative>
-            <PaginatedList
+            <PaginatedList<Collection>
               options={params}
               aria-label={t("Collections")}
               items={collections.allActive}
@@ -69,7 +69,7 @@ function Collections() {
                 ) : undefined
               }
               renderError={(props) => <StyledError {...props} />}
-              renderItem={(item: Collection, index) => (
+              renderItem={(item, index) => (
                 <DraggableCollectionLink
                   key={item.id}
                   collection={item}

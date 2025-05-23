@@ -7,7 +7,7 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { usePopoverState, PopoverDisclosure } from "reakit/Popover";
 import Document from "~/models/Document";
-import { AvatarWithPresence } from "~/components/Avatar";
+import { AvatarSize, AvatarWithPresence } from "~/components/Avatar";
 import DocumentViews from "~/components/DocumentViews";
 import Facepile from "~/components/Facepile";
 import NudeButton from "~/components/NudeButton";
@@ -49,7 +49,7 @@ function Collaborators(props: Props) {
     () =>
       orderBy(
         filter(
-          users.orderedData,
+          users.all,
           (u) =>
             (presentIds.includes(u.id) ||
               document.collaboratorIds.includes(u.id)) &&
@@ -58,7 +58,7 @@ function Collaborators(props: Props) {
         [(u) => presentIds.includes(u.id), "id"],
         ["asc", "asc"]
       ),
-    [document.collaboratorIds, users.orderedData, presentIds]
+    [document.collaboratorIds, users.all, presentIds]
   );
 
   // load any users we don't yet have in memory
@@ -78,49 +78,56 @@ function Collaborators(props: Props) {
     placement: "bottom-end",
   });
 
+  const renderAvatar = React.useCallback(
+    ({ model: collaborator, ...rest }) => {
+      const isPresent = presentIds.includes(collaborator.id);
+      const isEditing = editingIds.includes(collaborator.id);
+      const isObserving = ui.observingUserId === collaborator.id;
+      const isObservable = collaborator.id !== currentUserId;
+
+      return (
+        <AvatarWithPresence
+          {...rest}
+          key={collaborator.id}
+          user={collaborator}
+          isPresent={isPresent}
+          isEditing={isEditing}
+          isObserving={isObserving}
+          isCurrentUser={currentUserId === collaborator.id}
+          onClick={
+            isObservable
+              ? (ev) => {
+                  if (isPresent) {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    ui.setObservingUser(
+                      isObserving ? undefined : collaborator.id
+                    );
+                  }
+                }
+              : undefined
+          }
+        />
+      );
+    },
+    [presentIds, ui, currentUserId, editingIds]
+  );
+
   return (
     <>
       <PopoverDisclosure {...popover}>
         {(popoverProps) => (
           <NudeButton
-            width={Math.min(collaborators.length, limit) * 32}
-            height={32}
+            width={Math.min(collaborators.length, limit) * AvatarSize.Large}
+            height={AvatarSize.Large}
             {...popoverProps}
           >
             <Facepile
+              size={AvatarSize.Large}
               limit={limit}
-              overflow={collaborators.length - limit}
+              overflow={Math.max(0, collaborators.length - limit)}
               users={collaborators}
-              renderAvatar={(collaborator) => {
-                const isPresent = presentIds.includes(collaborator.id);
-                const isEditing = editingIds.includes(collaborator.id);
-                const isObserving = ui.observingUserId === collaborator.id;
-                const isObservable = collaborator.id !== user.id;
-
-                return (
-                  <AvatarWithPresence
-                    key={collaborator.id}
-                    user={collaborator}
-                    isPresent={isPresent}
-                    isEditing={isEditing}
-                    isObserving={isObserving}
-                    isCurrentUser={currentUserId === collaborator.id}
-                    onClick={
-                      isObservable
-                        ? (ev) => {
-                            if (isPresent) {
-                              ev.preventDefault();
-                              ev.stopPropagation();
-                              ui.setObservingUser(
-                                isObserving ? undefined : collaborator.id
-                              );
-                            }
-                          }
-                        : undefined
-                    }
-                  />
-                );
-              }}
+              renderAvatar={renderAvatar}
             />
           </NudeButton>
         )}

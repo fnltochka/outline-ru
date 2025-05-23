@@ -268,14 +268,14 @@ export const ViewGroupMembersDialog = observer(function ({
       <Subheading>
         <Trans>Members</Trans>
       </Subheading>
-      <PaginatedList
+      <PaginatedList<User>
         items={users.inGroup(group.id)}
         fetch={groupUsers.fetchPage}
         options={{
           id: group.id,
         }}
         empty={<Empty>{t("This group has no members.")}</Empty>}
-        renderItem={(user: User) => (
+        renderItem={(user) => (
           <GroupMemberListItem
             key={user.id}
             user={user}
@@ -382,7 +382,7 @@ const AddPeopleToGroupDialog = observer(function ({
           <PlaceholderList count={5} />
         </DelayedMount>
       ) : (
-        <PaginatedList
+        <PaginatedList<User>
           empty={
             query ? (
               <Empty>{t("No people matching your search")}</Empty>
@@ -392,7 +392,7 @@ const AddPeopleToGroupDialog = observer(function ({
           }
           items={users.notInGroup(group.id, query)}
           fetch={query ? undefined : users.fetchPage}
-          renderItem={(item: User) => (
+          renderItem={(item) => (
             <GroupMemberListItem
               key={item.id}
               user={item}
@@ -434,7 +434,7 @@ const GroupMemberListItem = observer(function ({
           {user.isAdmin && <Badge primary={user.isAdmin}>{t("Admin")}</Badge>}
         </>
       }
-      image={<Avatar model={user} size={32} />}
+      image={<Avatar model={user} size={AvatarSize.Large} />}
       actions={
         <Flex align="center">
           {onRemove && <GroupMemberMenu onRemove={onRemove} />}

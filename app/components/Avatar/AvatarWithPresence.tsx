@@ -5,17 +5,45 @@ import styled, { css } from "styled-components";
 import { s } from "@shared/styles";
 import User from "~/models/User";
 import Tooltip from "~/components/Tooltip";
-import Avatar from "./Avatar";
+import Avatar, { AvatarSize } from "./Avatar";
 
+/**
+ * Props for the AvatarWithPresence component
+ */
 type Props = {
+  /** The user to display the avatar for */
   user: User;
+  /** Whether the user is currently present in the document */
   isPresent: boolean;
+  /** Whether the user is currently editing the document */
   isEditing: boolean;
+  /** Whether the user is currently observing the document */
   isObserving: boolean;
+  /** Whether this avatar represents the current user */
   isCurrentUser: boolean;
+  /** Optional click handler for the avatar */
   onClick?: React.MouseEventHandler<HTMLImageElement>;
+  /** Size of the avatar, defaults to AvatarSize.Large */
+  size?: AvatarSize;
+  /** Optional inline styles to apply to the avatar wrapper */
+  style?: React.CSSProperties;
 };
 
+/**
+ * AvatarWithPresence component displays a user's avatar with visual indicators
+ * for their current status (present, editing, observing).
+ *
+ * The component shows different visual states:
+ * - Present users have full opacity
+ * - Non-present users have reduced opacity
+ * - Observing users have a colored border matching their user color
+ * - Hovering shows a colored border
+ *
+ * A tooltip displays the user's name and current status.
+ *
+ * @param props - Component properties
+ * @returns React component
+ */
 function AvatarWithPresence({
   onClick,
   user,
@@ -23,6 +51,8 @@ function AvatarWithPresence({
   isEditing,
   isObserving,
   isCurrentUser,
+  size = AvatarSize.Large,
+  style,
 }: Props) {
   const { t } = useTranslation();
   const status = isPresent
@@ -47,29 +77,47 @@ function AvatarWithPresence({
         }
         placement="bottom"
       >
-        <AvatarWrapper
+        <AvatarPresence
           $isPresent={isPresent}
           $isObserving={isObserving}
           $color={user.color}
+          style={style}
         >
-          <Avatar model={user} onClick={onClick} size={32} />
-        </AvatarWrapper>
+          <Avatar model={user} onClick={onClick} size={size} />
+        </AvatarPresence>
       </Tooltip>
     </>
   );
 }
 
+/**
+ * Centered container for tooltip content
+ */
 const Centered = styled.div`
   text-align: center;
 `;
 
+/**
+ * Props for the AvatarPresence styled component
+ */
 type AvatarWrapperProps = {
+  /** Whether the user is currently present */
   $isPresent: boolean;
+  /** Whether the user is currently observing */
   $isObserving: boolean;
+  /** The user's color for border highlighting */
   $color: string;
 };
 
-const AvatarWrapper = styled.div<AvatarWrapperProps>`
+/**
+ * Styled component that wraps the Avatar and provides visual indicators
+ * for the user's presence status.
+ *
+ * - Adjusts opacity based on presence
+ * - Adds colored borders for observing users
+ * - Handles hover effects
+ */
+const AvatarPresence = styled.div<AvatarWrapperProps>`
   opacity: ${(props) => (props.$isPresent ? 1 : 0.5)};
   transition: opacity 250ms ease-in-out;
   border-radius: 50%;

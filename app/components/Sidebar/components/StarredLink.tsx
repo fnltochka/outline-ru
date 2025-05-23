@@ -38,10 +38,10 @@ function StarredLink({ star }: Props) {
   const { ui, collections, documents } = useStores();
   const [menuOpen, handleMenuOpen, handleMenuClose] = useBoolean();
   const { documentId, collectionId } = star;
-  const collection = collections.get(collectionId);
+  const collection = collectionId ? collections.get(collectionId) : undefined;
   const locationSidebarContext = useLocationSidebarContext();
   const sidebarContext = starredSidebarContext(
-    star.documentId ?? star.collectionId
+    star.documentId ?? star.collectionId ?? ""
   );
   const [expanded, setExpanded] = useState(
     (star.documentId
@@ -84,6 +84,11 @@ function StarredLink({ star }: Props) {
       setExpanded((prevExpanded) => !prevExpanded);
     },
     []
+  );
+
+  const handlePrefetch = React.useCallback(
+    () => documentId && documents.prefetchDocument(documentId),
+    [documents, documentId]
   );
 
   const getIndex = () => {
@@ -142,6 +147,7 @@ function StarredLink({ star }: Props) {
             }}
             expanded={hasChildDocuments && !isDragging ? expanded : undefined}
             onDisclosureClick={handleDisclosureClick}
+            onClickIntent={handlePrefetch}
             icon={icon}
             isActive={(
               match,
@@ -172,6 +178,7 @@ function StarredLink({ star }: Props) {
                   node={node}
                   collection={collection}
                   activeDocument={documents.active}
+                  prefetchDocument={documents.prefetchDocument}
                   isDraft={node.isDraft}
                   depth={2}
                   index={index}

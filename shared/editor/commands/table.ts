@@ -1,5 +1,11 @@
-import { Fragment, Node, NodeType } from "prosemirror-model";
-import { Command, EditorState, TextSelection } from "prosemirror-state";
+import { GapCursor } from "prosemirror-gapcursor";
+import { Node, NodeType, Slice } from "prosemirror-model";
+import {
+  Command,
+  EditorState,
+  TextSelection,
+  Transaction,
+} from "prosemirror-state";
 import {
   CellSelection,
   addRow,
@@ -10,24 +16,35 @@ import {
   addColumn,
   deleteRow,
   deleteColumn,
+  deleteTable,
 } from "prosemirror-tables";
 import { ProsemirrorHelper } from "../../utils/ProsemirrorHelper";
+import { CSVHelper } from "../../utils/csv";
 import { chainTransactions } from "../lib/chainTransactions";
-import { getCellsInColumn, isHeaderEnabled } from "../queries/table";
+import {
+  getCellsInColumn,
+  isHeaderEnabled,
+  isTableSelected,
+} from "../queries/table";
 import { TableLayout } from "../types";
 import { collapseSelection } from "./collapseSelection";
 
 export function createTable({
   rowsCount,
   colsCount,
+  colWidth,
 }: {
+  /** The number of rows in the table. */
   rowsCount: number;
+  /** The number of columns in the table. */
   colsCount: number;
+  /** The widths of each column in the table. */
+  colWidth: number;
 }): Command {
   return (state, dispatch) => {
     if (dispatch) {
       const offset = state.tr.selection.anchor + 1;
-      const nodes = createTableInner(state, rowsCount, colsCount);
+      const nodes = createTableInner(state, rowsCount, colsCount, colWidth);
       const tr = state.tr.replaceSelectionWith(nodes).scrollIntoView();
       const resolvedPos = tr.doc.resolve(offset);
       tr.setSelection(TextSelection.near(resolvedPos));
@@ -37,10 +54,11 @@ export function createTable({
   };
 }
 
-function createTableInner(
+export function createTableInner(
   state: EditorState,
   rowsCount: number,
   colsCount: number,
+  colWidth?: number,
   withHeaderRow = true,
   cellContent?: Node
 ) {
@@ -49,23 +67,28 @@ function createTableInner(
   const cells: Node[] = [];
   const rows: Node[] = [];
 
-  const createCell = (
-    cellType: NodeType,
-    cellContent: Fragment | Node | readonly Node[] | null | undefined
-  ) =>
+  const createCell = (cellType: NodeType, attrs: Record<string, any> | null) =>
     cellContent
-      ? cellType.createChecked(null, cellContent)
-      : cellType.createAndFill();
+      ? cellType.createChecked(attrs, cellContent)
+      : cellType.createAndFill(attrs);
 
   for (let index = 0; index < colsCount; index += 1) {
-    const cell = createCell(types.cell, cellContent);
+    const attrs =
+      colWidth && index < colsCount - 1
+        ? {
+            colwidth: [colWidth],
+            colspan: 1,
+            rowspan: 1,
+          }
+        : null;
+    const cell = createCell(types.cell, attrs);
 
     if (cell) {
       cells.push(cell);
     }
 
     if (withHeaderRow) {
-      const headerCell = createCell(types.header_cell, cellContent);
+      const headerCell = createCell(types.header_cell, attrs);
 
       if (headerCell) {
         headerCells.push(headerCell);
@@ -125,7 +148,7 @@ export function exportTable({
               }
 
               // Avoid cell content being interpreted as formulas by adding a leading single quote
-              value = value.trimStart().replace(/^([+\-=@])/, "'$1");
+              value = CSVHelper.sanitizeValue(value);
 
               return `"${value}"`;
             })
@@ -487,4 +510,90 @@ export function selectTable(): Command {
     }
     return false;
   };
+}
+
+export function moveOutOfTable(direction: 1 | -1): Command {
+  return (state, dispatch): boolean => {
+    if (dispatch) {
+      if (state.selection instanceof GapCursor) {
+        return false;
+      }
+      if (!isInTable(state)) {
+        return false;
+      }
+
+      // check if current cursor position is at the top or bottom of the table
+      const rect = selectedRect(state);
+      const topOfTable =
+        rect.top === 0 && rect.bottom === 1 && direction === -1;
+      const bottomOfTable =
+        rect.top === rect.map.height - 1 &&
+        rect.bottom === rect.map.height &&
+        direction === 1;
+
+      if (!topOfTable && !bottomOfTable) {
+        return false;
+      }
+
+      const map = rect.map.map;
+      const $start = state.doc.resolve(rect.tableStart + map[0] - 1);
+      const $end = state.doc.resolve(rect.tableStart + map[map.length - 1] + 2);
+
+      // @ts-expect-error findGapCursorFrom is a ProseMirror internal method.
+      const $found = GapCursor.findGapCursorFrom(
+        direction > 0 ? $end : $start,
+        direction,
+        true
+      );
+
+      if ($found) {
+        dispatch(state.tr.setSelection(new GapCursor($found)));
+        return true;
+      }
+    }
+    return false;
+  };
+}
+
+/**
+ * A command that deletes the entire table if all cells are selected.
+ *
+ * @returns The command
+ */
+export function deleteTableIfSelected(): Command {
+  return (state, dispatch): boolean => {
+    if (isTableSelected(state)) {
+      return deleteTable(state, dispatch);
+    }
+    return false;
+  };
+}
+
+export function deleteCellSelection(
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void
+): boolean {
+  const sel = state.selection;
+  if (!(sel instanceof CellSelection)) {
+    return false;
+  }
+  if (dispatch) {
+    const tr = state.tr;
+    const baseContent = tableNodeTypes(state.schema).cell.createAndFill()!
+      .content;
+    sel.forEachCell((cell, pos) => {
+      if (!cell.content.eq(baseContent)) {
+        tr.replace(
+          tr.mapping.map(pos + 1),
+          tr.mapping.map(pos + cell.nodeSize - 1),
+          new Slice(baseContent, 0, 0)
+        );
+      }
+    });
+    if (tr.docChanged) {
+      dispatch(tr);
+      return true;
+    }
+  }
+  return false;
 }
